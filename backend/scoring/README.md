@@ -81,10 +81,10 @@ cd backend/scoring
 export OPENAI_API_KEY='your-key-here'
 
 # Test individual axis
-python test_founder_axis.py
+python3 test_founder_axis.py
 
 # Test all three axes together
-python test_all_axes.py
+python3 test_all_axes.py
 ```
 
 ## Usage Example
@@ -126,9 +126,31 @@ print(f"Founder Score: {result.founder_score.value} ± {result.founder_score.con
 - JSON response format enforced
 - System prompts tuned for VC analyst rigor
 
+## Additional Components Built
+
+### Thesis Engine (`thesis_engine.py`)
+Two-stage investment thesis matching:
+1. **Deterministic gate** — sector/stage/geography/check-size (fast rule-based filtering)
+2. **LLM judgment** — only for ambiguous/adjacent cases
+
+Output: `{thesis_match, match_type, rationale}`
+
+Matches opportunities against configurable thesis (sectors, geographies, stage, check size).
+
+### Multi-Attribute Query Parser (`query_parser.py`)
+Natural language → structured database filters in one LLM call.
+
+**Example queries:**
+- "technical founder, Berlin, AI infra, no prior VC backing"
+- "revenue > $10K, strong GitHub, seed stage"
+- "climate tech, cold start, first-time founder"
+
+Outputs `StructuredQuery` with extracted filters for all dimensions (founder, market, traction, etc.).
+
 ## Next Steps
 
-1. Build Thesis Engine (deterministic gate + LLM fit judgment)
-2. Build Multi-Attribute Reasoning query parser
-3. Wire into FastAPI endpoints (API glue)
-4. Integration test with Signal Intake output when available
+1. ✅ Multi-Axis Scorer — COMPLETE
+2. ✅ Thesis Engine — COMPLETE
+3. ✅ Multi-Attribute Query Parser — COMPLETE
+4. ✅ FastAPI glue endpoints — COMPLETE (see `/backend/api/`)
+5. Integration test with Signal Intake output when Role A's module is ready

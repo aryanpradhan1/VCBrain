@@ -27,7 +27,7 @@ This is a submission for Hack-Nation's 6th Global AI Hackathon, Maschmeyer Group
 | Layer | Choice |
 |---|---|
 | Backend | FastAPI (Python) |
-| LLM provider | **[FILL IN before Block 1 — write the exact model string here. Do not let four people pick four providers ad hoc.]** |
+| LLM provider | OpenAI |
 | Frontend | React + Vite + Tailwind + shadcn/ui |
 | Data storage | SQLite |
 | Deployment | Railway/Render (backend) + Vercel (frontend), only if time allows after 1:00 AM. Localhost + screen recording is the safe fallback — don't let deployment risk eat build time. |

@@ -1,0 +1,47 @@
+{
+  "founder_id": "f005",
+  "company_id": "c005",
+  "deck_claims": [
+    {
+      "field": "team",
+      "value": "CEO: Former restaurant manager, passionate about food",
+      "source_slide": 3
+    },
+    {
+      "field": "problem_product",
+      "value": "Mobile app for discovering local restaurants. Swipe right to save favorites.",
+      "source_slide": 2
+    },
+    {
+      "field": "market_size",
+      "value": "$50B restaurant discovery market",
+      "source_slide": 5
+    },
+    {
+      "field": "traction",
+      "value": "500 downloads, 50 DAU",
+      "source_slide": 6
+    },
+    {
+      "field": "ask",
+      "value": "Looking for $250K",
+      "source_slide": 8
+    }
+  ],
+  "public_signals": {
+    "github": {
+      "repos": 1,
+      "commit_consistency_score": 0.3,
+      "longevity_months": 4
+    },
+    "devpost_hn": {
+      "launches": 0,
+      "total_upvotes": 0
+    },
+    "arxiv": {
+      "papers": 0
+    }
+  },
+  "sourcing_channel": "inbound",
+  "cold_start_flag": true
+}
