@@ -112,10 +112,7 @@ function Row({ opp }) {
         </div>
         </div>
 
-        <div className="hidden shrink-0 flex-col items-end gap-1.5 sm:flex">
-          <span className="text-[9px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
-            Founder Score
-          </span>
+        <div className="hidden shrink-0 flex-col items-end justify-center gap-1.5 sm:flex">
           <span title="value ± confidence interval — the band narrows as independent evidence corroborates">
             <ScoreBadge score={opp.founder_score} size="sm" />
           </span>
@@ -126,7 +123,10 @@ function Row({ opp }) {
               idea_vs_market_axis={opp.idea_vs_market_axis}
             />
           </span>
-          <span className="hidden text-[11px] font-medium text-muted-foreground tabular-nums lg:block">
+        </div>
+
+        <div className="hidden flex-col items-end justify-center lg:flex">
+          <span className="text-[11px] font-medium text-muted-foreground tabular-nums">
             {opp.amount_recommended > 0 ? `${fmtAmount(opp.amount_recommended)} recommended` : "no check"}
           </span>
         </div>
