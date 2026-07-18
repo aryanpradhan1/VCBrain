@@ -5,11 +5,28 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterable
+from urllib.parse import urlparse
 
 from .clients import ExternalServiceError, ReasoningClient, SearchClient
 from .models import ClaimTrust, DeckClaim, Evidence, FlaggedClaim, ValidationResult, normalize_claims
 
 _NEGATION_TERMS = ("false", "incorrect", "no evidence", "disputed", "contradict")
+_STOP_WORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "for",
+        "in",
+        "is",
+        "of",
+        "on",
+        "the",
+        "to",
+        "with",
+    }
+)
 
 
 class ClaimValidator:
@@ -34,9 +51,9 @@ class ClaimValidator:
         result = ValidationResult()
         for claim in claims:
             evidence = self._search(company_name, claim)
-            result.tavily_sources_checked.extend(
-                source.url for source in evidence if source.url not in result.tavily_sources_checked
-            )
+            for url in cited_urls(evidence):
+                if url not in result.tavily_sources_checked:
+                    result.tavily_sources_checked.append(url)
             flagged, trust = self._assess(company_name, claim, evidence)
             if flagged is not None:
                 result.flagged_claims.append(flagged)
@@ -82,17 +99,20 @@ class ClaimValidator:
                 }
             ),
         )
-        confidence = str(payload["confidence"])
-        severity = str(payload.get("severity", "medium"))
+        confidence = payload["confidence"]
+        severity = payload.get("severity", "medium")
         if confidence not in {"high", "medium", "low"}:
             raise ValueError("invalid confidence")
         if severity not in {"low", "medium", "high"}:
             raise ValueError("invalid severity")
+        contradiction = payload.get("contradiction")
+        if not isinstance(contradiction, bool):
+            raise TypeError("contradiction must be a boolean")
         citations = "; ".join(item.citation for item in evidence)
         summary = str(payload.get("evidence_summary") or "Evidence is inconclusive")
         trust = ClaimTrust(claim.field, confidence, f"{summary} Sources: {citations}")
         flagged = None
-        if bool(payload.get("contradiction")):
+        if contradiction:
             flagged = FlaggedClaim(
                 claim.field,
                 str(payload.get("issue") or "External evidence conflicts with the claim"),
@@ -114,7 +134,19 @@ class ClaimValidator:
         combined = " ".join(item.content.lower() for item in evidence)
         contradiction = any(term in combined for term in _NEGATION_TERMS)
         citations = "; ".join(item.citation for item in evidence)
-        confidence = "high" if len(evidence) >= 2 and not contradiction else "medium"
+        relevant_evidence = [item for item in evidence if _evidence_supports_claim(claim, item)]
+        independent_hosts = {
+            urlparse(item.url).hostname.casefold()
+            for item in relevant_evidence
+            if urlparse(item.url).hostname
+        }
+        confidence = "high" if len(independent_hosts) >= 2 and not contradiction else "medium"
+        if not relevant_evidence and not contradiction:
+            return None, ClaimTrust(
+                claim.field,
+                "low",
+                f"Sources were located but did not specifically support the claim. Sources: {citations}",
+            )
         trust = ClaimTrust(
             claim.field,
             confidence,
@@ -139,3 +171,19 @@ class ClaimValidator:
 def cited_urls(items: Iterable[Evidence]) -> list[str]:
     """Return stable, deduplicated URLs for memory provenance."""
     return list(dict.fromkeys(item.url for item in items if re.match(r"https?://", item.url)))
+
+
+def _evidence_supports_claim(claim: DeckClaim, evidence: Evidence) -> bool:
+    """Require claim-specific lexical support before raising conservative trust."""
+    claim_tokens = {
+        token
+        for token in re.findall(r"[a-z0-9]+", f"{claim.field} {claim.value}".casefold())
+        if len(token) >= 3 and token not in _STOP_WORDS
+    }
+    evidence_tokens = set(
+        re.findall(
+            r"[a-z0-9]+",
+            f"{evidence.title} {evidence.content}".casefold(),
+        )
+    )
+    return bool(claim_tokens & evidence_tokens)

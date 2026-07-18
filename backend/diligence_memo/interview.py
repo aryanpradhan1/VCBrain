@@ -45,6 +45,8 @@ class InterviewSession:
         self.responses.append(response.strip())
 
     def result(self) -> dict[str, Any]:
+        if len(self.responses) < self.max_questions:
+            raise ValueError("Complete all interview questions before requesting a result")
         pattern = classify_response_pattern(self.responses)
         scores = {
             "engaged_updated": 90,
@@ -77,8 +79,8 @@ class InterviewAgent:
     def start(
         self, raw_claims: list[dict[str, Any] | DeckClaim], max_questions: int = 5
     ) -> InterviewSession:
-        if not 2 <= max_questions <= 5:
-            raise ValueError("max_questions must be between 2 and 5")
+        if not 4 <= max_questions <= 5:
+            raise ValueError("max_questions must be between 4 and 5")
         return InterviewSession(normalize_claims(raw_claims), max_questions=max_questions)
 
 
