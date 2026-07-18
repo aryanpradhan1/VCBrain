@@ -133,8 +133,8 @@ export function InvestorShell() {
         </nav>
       </header>
 
-      <div className="lg:pl-[236px]">
-        <div className="mx-auto max-w-[1200px] px-5 py-8 lg:px-10">
+      <div className="shell-content lg:pl-[236px]">
+        <div className="shell-page mx-auto max-w-[1200px] px-5 py-8 lg:px-10">
           <Outlet />
         </div>
       </div>

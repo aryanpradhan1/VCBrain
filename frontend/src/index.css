@@ -187,3 +187,96 @@
     0 2px 4px oklch(0.2 0.01 255 / 0.05),
     0 16px 32px -12px oklch(0.2 0.01 255 / 0.14);
 }
+
+/* The memo is an investor-ready document as well as a screen. Browser print lets
+   the team save it as a PDF without maintaining a second, drifting template. */
+.memo-print-heading {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 14mm;
+  }
+
+  html, body {
+    background: white !important;
+    font-size: 10pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  aside, header, .print-hidden, .memo-expand-control, button, a[href] {
+    display: none !important;
+  }
+
+  .shell-content, .shell-page {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .memo-document {
+    display: block !important;
+  }
+
+  .memo-print-heading {
+    display: block;
+    margin: 0 0 9mm;
+    padding-bottom: 4mm;
+    border-bottom: 1px solid #dbe3ee;
+  }
+
+  .memo-print-brand {
+    color: #334155;
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .memo-print-brand span, .memo-print-meta {
+    color: #64748b;
+    font-weight: 500;
+  }
+
+  .memo-print-company {
+    margin-top: 2mm;
+    color: #0f172a;
+    font-size: 24pt;
+    font-weight: 700;
+    letter-spacing: -.04em;
+  }
+
+  .memo-print-meta {
+    margin-top: 1mm;
+    font-size: 9pt;
+  }
+
+  .memo-summary-rail {
+    position: static !important;
+    margin-bottom: 6mm;
+  }
+
+  section, .rounded-2xl, .rounded-xl, .card-hairline {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  .memo-document > div > div {
+    break-inside: avoid;
+  }
+
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  .min-w-\[540px\] {
+    min-width: 0 !important;
+  }
+
+  svg {
+    overflow: visible;
+  }
+}

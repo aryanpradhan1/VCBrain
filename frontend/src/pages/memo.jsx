@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { motion } from "motion/react"
 import {
@@ -13,6 +13,7 @@ import {
   MapPin,
   Newspaper,
   Quote,
+  Printer,
   ShieldAlert,
   ShieldCheck,
   Users,
@@ -21,6 +22,7 @@ import {
 import { FaGithub, FaGlobe, FaLinkedinIn, FaXTwitter } from "react-icons/fa6"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -336,9 +338,10 @@ const swotMeta = {
   threats: { cls: "bg-amber-50/80 text-amber-900" },
 }
 
-function MemoBody({ memo }) {
+function MemoBody({ memo, expanded = false }) {
   const { required, optional_or_flagged } = memo
   const [full, setFull] = useState(false)
+  const showFull = expanded || full
   return (
     <Card className="gap-4">
       <CardContent className="space-y-5 pt-5">
@@ -372,7 +375,7 @@ function MemoBody({ memo }) {
           </div>
         </div>
 
-        {full && (
+        {showFull && (
           <>
             <div>
               <h3 className="mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">Company snapshot</h3>
@@ -407,8 +410,8 @@ function MemoBody({ memo }) {
         <button
           type="button"
           onClick={() => setFull((f) => !f)}
-          className="text-xs font-medium text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground">
-          {full ? "Collapse memo" : "Read the full Appendix-1 memo"}
+          className="memo-expand-control text-xs font-medium text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground">
+          {showFull ? "Collapse memo" : "Read the full Appendix-1 memo"}
         </button>
       </CardContent>
     </Card>
@@ -497,26 +500,54 @@ export default function Memo() {
   const { id } = useParams()
   const { data: opp, error, loading, retry } = useAsync(() => getOpportunity(id), [id])
   const e = opp?.enrichment
+  const [printing, setPrinting] = useState(false)
+
+  useEffect(() => {
+    if (!printing || !opp) return undefined
+
+    const originalTitle = document.title
+    document.title = `${opp.company_name} — FounderScore investment brief`
+    const openPrintDialog = () => {
+      window.print()
+      document.title = originalTitle
+      setPrinting(false)
+    }
+    const frame = requestAnimationFrame(() => requestAnimationFrame(openPrintDialog))
+    return () => cancelAnimationFrame(frame)
+  }, [printing, opp])
 
   return (
     <Page>
+      <div className="print-hidden mb-4 flex flex-wrap items-center justify-between gap-3">
       <Link
         to="/"
-        className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+        className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
         <ArrowLeft className="size-4" />
         Pipeline
       </Link>
+      {opp && (
+        <Button variant="outline" size="sm" onClick={() => setPrinting(true)} className="rounded-full px-3 shadow-sm">
+          <Printer data-icon="inline-start" />
+          Export investment brief
+        </Button>
+      )}
+      </div>
 
       {error && <ErrorBanner message="Couldn't load this opportunity." onRetry={retry} />}
       {loading && <MemoSkeleton />}
 
       {opp && (
-        <div className="grid items-start gap-5 lg:grid-cols-[300px_1fr]">
+        <div className="memo-document grid items-start gap-5 lg:grid-cols-[300px_1fr]">
+          <header className="memo-print-heading">
+            <div className="memo-print-brand">FounderScore <span>· Investment brief</span></div>
+            <div className="memo-print-company">{opp.company_name}</div>
+            <div className="memo-print-meta">Prepared for Maschmeyer Group · Confidential</div>
+          </header>
           <motion.div
             initial={{ opacity: 0, x: -12 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            className="lg:sticky lg:top-8">
+            className="memo-summary-rail lg:sticky lg:top-8">
             <SummaryRail opp={opp} />
           </motion.div>
 
@@ -603,7 +634,7 @@ export default function Memo() {
 
             <motion.div variants={stagger.item}>
               <Section icon={FileText} title="Investment memo" sub="Appendix-1 structure — flagged fields never fabricated">
-                <MemoBody memo={opp.memo} />
+                <MemoBody memo={opp.memo} expanded={printing} />
               </Section>
             </motion.div>
 
