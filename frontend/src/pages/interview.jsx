@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { AnimatePresence, motion } from "motion/react"
 import { ArrowLeft, ArrowUp, Check } from "lucide-react"
+import confetti from "canvas-confetti"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -74,6 +75,22 @@ export default function Interview() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
   }, [messages, typing, done])
+
+  // A brief, tasteful burst when the interview completes.
+  useEffect(() => {
+    if (!done) return
+    const t = setTimeout(() => {
+      confetti({
+        particleCount: 90,
+        spread: 70,
+        startVelocity: 32,
+        origin: { y: 0.7 },
+        colors: ["#10b981", "#2dd4bf", "#0ea5e9", "#a78bfa"],
+        disableForReducedMotion: true,
+      })
+    }, 350)
+    return () => clearTimeout(t)
+  }, [done])
 
   const send = (e) => {
     e.preventDefault()

@@ -1,11 +1,18 @@
 import { Link, useParams } from "react-router-dom"
 import { motion } from "motion/react"
 import {
+  AlertTriangle,
   ArrowLeft,
   CircleCheck,
   ExternalLink,
+  FileText,
   Flag,
-  Quote,
+  GitBranch,
+  Lightbulb,
+  Link2,
+  MessageCircle,
+  Minus,
+  Plus,
   ShieldAlert,
 } from "lucide-react"
 
@@ -13,37 +20,47 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  ChannelBadge,
-  ColdStartBadge,
-  ConfidenceChip,
-  RatingPill,
-} from "@/components/shared/chips"
+import { BorderBeam } from "@/components/magicui/border-beam"
+import { ChannelBadge, ColdStartBadge, RatingPill } from "@/components/shared/chips"
 import { DecisionBar } from "@/components/shared/decision-bar"
 import { Page, stagger } from "@/components/shared/page"
-import { ScoreBadge } from "@/components/shared/score-badge"
-import { scoreDot, verdictMeta } from "@/components/shared/semantics"
+import { ScoreRing } from "@/components/shared/score-ring"
+import { SignalChips } from "@/components/shared/signal-chips"
+import { avatarGradient, scoreDot, verdictMeta } from "@/components/shared/semantics"
 import { ErrorBanner } from "@/components/shared/states"
 import { TrendArrow } from "@/components/shared/trend"
 import { getOpportunity } from "@/lib/api"
 import { useAsync } from "@/lib/use-async"
 import { cn } from "@/lib/utils"
 
-function Citations({ citations }) {
+function citationIcon(text) {
+  if (/github/i.test(text)) return GitBranch
+  if (/deck|slide/i.test(text)) return FileText
+  if (/interview/i.test(text)) return MessageCircle
+  return Link2
+}
+
+function CitationChips({ citations }) {
   if (!citations?.length) return null
   return (
-    <ul className="mt-3 space-y-1.5 border-t border-border pt-3">
-      {citations.map((c) => (
-        <li key={c} className="flex gap-1.5 text-xs text-muted-foreground">
-          <Quote className="mt-0.5 size-3 shrink-0 text-slate-300" />
-          {c}
-        </li>
-      ))}
-    </ul>
+    <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border pt-3">
+      {citations.map((c) => {
+        const Icon = citationIcon(c)
+        return (
+          <span
+            key={c}
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-secondary/70 px-2.5 py-1 text-[11px] font-medium text-foreground/70"
+            title={c}>
+            <Icon className="size-3 shrink-0 text-muted-foreground" />
+            <span className="truncate">{c}</span>
+          </span>
+        )
+      })}
+    </div>
   )
 }
 
-// The three axes — equal width, never merged into one number.
+// The three axes — equal treatment, never merged into one number.
 function AxisCards({ opp }) {
   const axes = [
     {
@@ -64,7 +81,7 @@ function AxisCards({ opp }) {
     },
   ]
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 xl:grid-cols-3">
       {axes.map(({ name, head, axis }) => (
         <motion.div key={name} variants={stagger.item}>
           <Card className="h-full gap-3">
@@ -79,7 +96,7 @@ function AxisCards({ opp }) {
             </CardHeader>
             <CardContent>
               <p className="text-sm leading-relaxed text-foreground/80">{axis.rationale}</p>
-              <Citations citations={axis.citations} />
+              <CitationChips citations={axis.citations} />
             </CardContent>
           </Card>
         </motion.div>
@@ -88,7 +105,30 @@ function AxisCards({ opp }) {
   )
 }
 
-// Per-claim trust — claim + evidence + confidence chip, never per-company.
+const confidenceBar = {
+  high: { filled: 3, cls: "bg-emerald-500", label: "high" },
+  medium: { filled: 2, cls: "bg-amber-400", label: "medium" },
+  low: { filled: 1, cls: "bg-red-400", label: "low" },
+}
+
+function ConfidenceMeter({ confidence }) {
+  const meta = confidenceBar[confidence] ?? confidenceBar.medium
+  return (
+    <span className="inline-flex flex-col items-end gap-1" title={`${meta.label} confidence`}>
+      <span className="flex gap-0.5">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className={cn("h-1.5 w-4 rounded-full", i < meta.filled ? meta.cls : "bg-slate-200")}
+          />
+        ))}
+      </span>
+      <span className="text-[10px] font-medium text-muted-foreground capitalize">{meta.label}</span>
+    </span>
+  )
+}
+
+// Per-claim trust — claim + evidence + confidence meter, never per-company.
 function TrustList({ claims }) {
   return (
     <Card className="gap-3">
@@ -101,17 +141,52 @@ function TrustList({ claims }) {
             <li key={c.claim}>
               {i > 0 && <Separator />}
               <div className="flex items-start gap-4 px-5 py-3.5">
-                <span className="w-28 shrink-0 pt-0.5 text-sm font-medium capitalize">
+                <span className="w-24 shrink-0 pt-0.5 text-sm font-medium capitalize">
                   {c.claim.replaceAll("_", " ")}
                 </span>
                 <p className="flex-1 text-sm leading-relaxed text-foreground/80">{c.evidence}</p>
-                <ConfidenceChip confidence={c.confidence} short />
+                <ConfidenceMeter confidence={c.confidence} />
               </div>
             </li>
           ))}
         </ul>
       </CardContent>
     </Card>
+  )
+}
+
+const swotMeta = {
+  strengths: { icon: Plus, cls: "bg-emerald-50/80 text-emerald-900", chip: "text-emerald-600" },
+  weaknesses: { icon: Minus, cls: "bg-red-50/70 text-red-900", chip: "text-red-500" },
+  opportunities: { icon: Lightbulb, cls: "bg-sky-50/80 text-sky-900", chip: "text-sky-600" },
+  threats: { icon: AlertTriangle, cls: "bg-amber-50/80 text-amber-900", chip: "text-amber-600" },
+}
+
+function Swot({ swot }) {
+  const groups = Object.entries(swot ?? {})
+  if (!groups.length) return <p className="text-sm text-muted-foreground">Not available.</p>
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {groups.map(([key, items]) => {
+        const meta = swotMeta[key] ?? swotMeta.strengths
+        const Icon = meta.icon
+        return (
+          <div key={key} className={cn("rounded-xl p-3.5", meta.cls)}>
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold capitalize">
+              <Icon className={cn("size-3.5", meta.chip)} strokeWidth={2.4} />
+              {key}
+            </div>
+            <ul className="space-y-1.5">
+              {(items ?? []).map((it) => (
+                <li key={it} className="text-[13px] leading-snug opacity-85">
+                  {it}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -132,27 +207,6 @@ function MemoSection({ title, children }) {
   )
 }
 
-function Swot({ swot }) {
-  const groups = Object.entries(swot ?? {})
-  if (!groups.length) return <p className="text-sm text-muted-foreground">Not available.</p>
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {groups.map(([key, items]) => (
-        <div key={key} className="rounded-xl bg-secondary/60 p-3.5">
-          <div className="mb-1.5 text-xs font-semibold capitalize">{key}</div>
-          <ul className="space-y-1">
-            {(items ?? []).map((it) => (
-              <li key={it} className="text-sm leading-snug text-foreground/80">
-                {it}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 // Appendix 1: required fully populated; optional shown filled-or-flagged, never omitted.
 function MemoCard({ memo }) {
   const { required, optional_or_flagged } = memo
@@ -167,9 +221,12 @@ function MemoCard({ memo }) {
         </MemoSection>
 
         <MemoSection title={sectionTitles.investment_hypotheses}>
-          <ol className="list-decimal space-y-1.5 pl-4">
-            {required.investment_hypotheses.map((h) => (
-              <li key={h} className="text-sm leading-relaxed text-foreground/80">
+          <ol className="space-y-2">
+            {required.investment_hypotheses.map((h, i) => (
+              <li key={h} className="flex gap-2.5 text-sm leading-relaxed text-foreground/80">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-secondary-foreground">
+                  {i + 1}
+                </span>
                 {h}
               </li>
             ))}
@@ -236,28 +293,76 @@ function PortfolioCheck({ check }) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2.5 rounded-xl px-4 py-3 text-sm",
+        "flex items-start gap-2 rounded-xl px-3.5 py-3 text-[13px] leading-snug",
         check.overlap ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
       )}>
-      <Icon className="size-4 shrink-0" />
-      <span className="font-medium">{check.overlap ? "Portfolio overlap" : "No portfolio overlap"}</span>
-      <span className={cn("truncate", check.overlap ? "text-red-600/80" : "text-emerald-700/70")}>
-        {check.note}
-      </span>
+      <Icon className="mt-0.5 size-4 shrink-0" />
+      <div>
+        <div className="font-semibold">{check.overlap ? "Portfolio overlap" : "No portfolio overlap"}</div>
+        <div className={check.overlap ? "text-red-600/80" : "text-emerald-700/70"}>{check.note}</div>
+      </div>
+    </div>
+  )
+}
+
+function SummaryRail({ opp }) {
+  const approved = opp.verdict === "approve"
+  return (
+    <div className="relative overflow-hidden rounded-2xl bg-card p-5 card-hairline">
+      {approved && <BorderBeam size={70} duration={7} colorFrom="#10b981" colorTo="#2dd4bf" />}
+      <div className="flex flex-col items-center text-center">
+        <span
+          className={cn(
+            "mb-3 flex size-12 items-center justify-center rounded-xl bg-gradient-to-br text-base font-bold text-white shadow-sm",
+            avatarGradient(opp.company_name)
+          )}>
+          {opp.company_name[0]}
+        </span>
+        <h1 className="text-lg font-semibold tracking-tight">{opp.company_name}</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+          <Badge variant={verdictMeta[opp.verdict].variant}>{verdictMeta[opp.verdict].label}</Badge>
+          <ChannelBadge channel={opp.sourcing_channel} />
+        </div>
+        {opp.cold_start_flag && (
+          <div className="mt-1.5">
+            <ColdStartBadge />
+          </div>
+        )}
+        <div className="my-4">
+          <ScoreRing score={opp.founder_score} />
+        </div>
+        <div className="w-full space-y-3 text-left">
+          <div>
+            <div className="mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
+              Public signals
+            </div>
+            <SignalChips signals={opp.public_signals} />
+          </div>
+          <PortfolioCheck check={opp.portfolio_check} />
+          <Link
+            to={`/founder/${opp.founder_id}`}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground">
+            What the founder sees
+            <ExternalLink className="size-3" />
+          </Link>
+        </div>
+      </div>
     </div>
   )
 }
 
 function MemoSkeleton() {
   return (
-    <div className="space-y-4">
-      <Skeleton className="h-24 rounded-2xl" />
-      <div className="grid gap-4 md:grid-cols-3">
-        <Skeleton className="h-48 rounded-2xl" />
-        <Skeleton className="h-48 rounded-2xl" />
-        <Skeleton className="h-48 rounded-2xl" />
+    <div className="grid gap-5 lg:grid-cols-[300px_1fr]">
+      <Skeleton className="h-[420px] rounded-2xl" />
+      <div className="space-y-4">
+        <div className="grid gap-4 xl:grid-cols-3">
+          <Skeleton className="h-48 rounded-2xl" />
+          <Skeleton className="h-48 rounded-2xl" />
+          <Skeleton className="h-48 rounded-2xl" />
+        </div>
+        <Skeleton className="h-64 rounded-2xl" />
       </div>
-      <Skeleton className="h-64 rounded-2xl" />
     </div>
   )
 }
@@ -279,54 +384,35 @@ export default function Memo() {
       {loading && <MemoSkeleton />}
 
       {opp && (
-        <motion.div variants={stagger.container} initial="initial" animate="animate" className="space-y-4">
-          <motion.div variants={stagger.item} className="flex flex-wrap items-end justify-between gap-4 pb-1">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-3xl font-semibold tracking-tight">{opp.company_name}</h1>
-                <ChannelBadge channel={opp.sourcing_channel} />
-                {opp.cold_start_flag && <ColdStartBadge />}
-                <Badge variant={verdictMeta[opp.verdict].variant}>
-                  Recommendation: {verdictMeta[opp.verdict].label}
-                </Badge>
-              </div>
-              <Link
-                to={`/founder/${opp.founder_id}`}
-                className="mt-1.5 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                What the founder sees
-                <ExternalLink className="size-3" />
-              </Link>
-            </div>
-            <div className="text-right">
-              <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                Founder Score
-              </div>
-              <ScoreBadge score={opp.founder_score} size="md" animated />
-            </div>
+        <div className="grid items-start gap-5 lg:grid-cols-[300px_1fr]">
+          <motion.div
+            initial={{ opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            className="lg:sticky lg:top-8">
+            <SummaryRail opp={opp} />
           </motion.div>
 
-          <AxisCards opp={opp} />
+          <motion.div variants={stagger.container} initial="initial" animate="animate" className="min-w-0 space-y-4">
+            <AxisCards opp={opp} />
 
-          <motion.div variants={stagger.item}>
-            <TrustList claims={opp.claim_trust} />
-          </motion.div>
+            <motion.div variants={stagger.item}>
+              <TrustList claims={opp.claim_trust} />
+            </motion.div>
 
-          <motion.div variants={stagger.item}>
-            <MemoCard memo={opp.memo} />
-          </motion.div>
+            <motion.div variants={stagger.item}>
+              <MemoCard memo={opp.memo} />
+            </motion.div>
 
-          <motion.div variants={stagger.item}>
-            <AdversarialPanel challenges={opp.adversarial_view.challenges} />
-          </motion.div>
+            <motion.div variants={stagger.item}>
+              <AdversarialPanel challenges={opp.adversarial_view.challenges} />
+            </motion.div>
 
-          <motion.div variants={stagger.item}>
-            <PortfolioCheck check={opp.portfolio_check} />
+            <motion.div variants={stagger.item}>
+              <DecisionBar opportunity={opp} />
+            </motion.div>
           </motion.div>
-
-          <motion.div variants={stagger.item}>
-            <DecisionBar opportunity={opp} />
-          </motion.div>
-        </motion.div>
+        </div>
       )}
     </Page>
   )

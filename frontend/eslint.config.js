@@ -23,4 +23,9 @@ export default defineConfig([
     files: ['src/components/**/*.jsx'],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
+  {
+    // vendored Magic UI components keep their upstream patterns
+    files: ['src/components/magicui/**'],
+    rules: { 'react-hooks/purity': 'off', 'react-hooks/refs': 'off' },
+  },
 ])

@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom"
 
 import { InvestorShell } from "@/components/layout/investor-shell"
+import Apply from "@/pages/apply"
 import Dashboard from "@/pages/dashboard"
 import FounderResults from "@/pages/founder-results"
 import Interview from "@/pages/interview"
@@ -19,6 +20,7 @@ export default function App() {
         </Route>
 
         {/* Founder-facing — score + narrative only, ever */}
+        <Route path="/apply" element={<Apply />} />
         <Route path="/founder/:id" element={<FounderResults />} />
         <Route path="/founder/:id/interview" element={<Interview />} />
       </Routes>

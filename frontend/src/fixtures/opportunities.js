@@ -2,6 +2,10 @@
 // Shapes match /shared/contract.md → "Frontend-consumption shape" exactly — never rename a field.
 // These belong in /shared/fixtures/ per the contract; they live here until the next sync point
 // because /shared/ is outside frontend's folder ownership.
+//
+// SYNC-POINT FLAG: `public_signals` uses the exact field names from the Signal Intake
+// output contract, but the frontend-consumption shape doesn't list it yet — B's glue
+// needs to pass it through. Raise at next sync; the dashboard renders signal chips from it.
 
 export const opportunities = [
   {
@@ -10,6 +14,11 @@ export const opportunities = [
     company_name: "Relay Robotics",
     sourcing_channel: "inbound",
     cold_start_flag: false,
+    public_signals: {
+      github: { repos: 12, commit_consistency_score: 0.9, longevity_months: 18 },
+      devpost_hn: { launches: 2, total_upvotes: 340 },
+      arxiv: { papers: 3 },
+    },
     founder_score: { value: 84, confidence_interval: 6, trend: "improving" },
     founder_axis: {
       score: 88,
@@ -113,6 +122,11 @@ export const opportunities = [
     company_name: "Cove Health",
     sourcing_channel: "outbound",
     cold_start_flag: true,
+    public_signals: {
+      github: { repos: 1, commit_consistency_score: 0.8, longevity_months: 14 },
+      devpost_hn: { launches: 0, total_upvotes: 0 },
+      arxiv: { papers: 0 },
+    },
     founder_score: { value: 38, confidence_interval: 24, trend: "stable" },
     founder_axis: {
       score: 46,
@@ -201,6 +215,11 @@ export const opportunities = [
     company_name: "Snapcart AI",
     sourcing_channel: "inbound",
     cold_start_flag: false,
+    public_signals: {
+      github: { repos: 9, commit_consistency_score: 0.3, longevity_months: 26 },
+      devpost_hn: { launches: 3, total_upvotes: 85 },
+      arxiv: { papers: 0 },
+    },
     founder_score: { value: 44, confidence_interval: 9, trend: "declining" },
     founder_axis: {
       score: 51,
