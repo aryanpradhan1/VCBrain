@@ -1,4 +1,5 @@
 import { FlaskConical, GitBranch, Rocket, TrendingUp } from "lucide-react"
+import { FaGithub } from "react-icons/fa6"
 
 import { cn } from "@/lib/utils"
 
@@ -62,6 +63,54 @@ export function SignalChips({ signals, className }) {
         active={arxiv?.papers > 0}
         label={arxiv?.papers > 0 ? `${arxiv.papers} ${arxiv.papers === 1 ? "paper" : "papers"}` : "no papers"}
         title={arxiv?.papers > 0 ? `arXiv: ${arxiv.papers} publications` : "No arXiv publications found"}
+      />
+    </div>
+  )
+}
+
+// Compact dashboard treatment: icon + one useful number, with the complete
+// evidence summary in a native tooltip. The memo keeps the expanded version.
+function CompactSignal({ icon: Icon, value, active, title, iconClassName }) {
+  return (
+    <span
+      title={title}
+      aria-label={title}
+      className={cn(
+        "inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-[11px] font-semibold tabular-nums",
+        active ? "border-border bg-white text-slate-700" : "border-transparent bg-secondary/70 text-muted-foreground/50"
+      )}>
+      <Icon className={cn("size-3.5", iconClassName)} />
+      <span>{value}</span>
+    </span>
+  )
+}
+
+export function SignalIcons({ signals, className }) {
+  if (!signals) return null
+  const { github, devpost_hn, arxiv } = signals
+  const githubActive = github?.repos > 0
+  const launchesActive = devpost_hn?.launches > 0
+  const papersActive = arxiv?.papers > 0
+
+  return (
+    <div className={cn("flex items-center gap-1.5", className)}>
+      <CompactSignal
+        icon={FaGithub}
+        value={githubActive ? github.repos : "–"}
+        active={githubActive}
+        title={githubActive ? `GitHub · ${github.repos} repositories · ${Math.round(github.commit_consistency_score * 100)}% commit consistency · ${github.longevity_months} months` : "No GitHub footprint found"}
+      />
+      <CompactSignal
+        icon={Rocket}
+        value={launchesActive ? devpost_hn.launches : "–"}
+        active={launchesActive}
+        title={launchesActive ? `Launches · ${devpost_hn.launches} Devpost/HN launches · ${devpost_hn.total_upvotes} total upvotes` : "No Devpost or Hacker News launches found"}
+      />
+      <CompactSignal
+        icon={FlaskConical}
+        value={papersActive ? arxiv.papers : "–"}
+        active={papersActive}
+        title={papersActive ? `Research · ${arxiv.papers} arXiv ${arxiv.papers === 1 ? "paper" : "papers"}` : "No arXiv publications found"}
       />
     </div>
   )

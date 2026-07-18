@@ -22,7 +22,14 @@ export function ConfidenceChip({ confidence, short = false }) {
 }
 
 // Same amber tag + same copy every time cold_start_flag fires. Never customized.
-export function ColdStartBadge() {
+export function ColdStartBadge({ compact = false }) {
+  if (compact) {
+    return (
+      <span title="Cold start — thin public data, wide confidence interval" className="inline-flex size-7 items-center justify-center rounded-md bg-amber-50 text-amber-700">
+        <Sprout className="size-3.5" />
+      </span>
+    )
+  }
   return (
     <Badge variant="caution">
       <Sprout />
@@ -31,9 +38,16 @@ export function ColdStartBadge() {
   )
 }
 
-export function ChannelBadge({ channel }) {
+export function ChannelBadge({ channel, compact = false }) {
   const inbound = channel === "inbound"
   const Icon = inbound ? ArrowDownLeft : ArrowUpRight
+  if (compact) {
+    return (
+      <span title={inbound ? "Inbound application" : "Sourced outbound"} className="inline-flex size-7 items-center justify-center rounded-md border border-border bg-white text-slate-400">
+        <Icon className="size-3.5" />
+      </span>
+    )
+  }
   return (
     <Badge variant="outline" className="gap-1">
       <Icon className="size-3 text-slate-400" />

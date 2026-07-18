@@ -16,7 +16,7 @@ import { AvatarCircles } from "@/components/magicui/avatar-circles"
 import { AxisDots, ChannelBadge, ColdStartBadge } from "@/components/shared/chips"
 import { Page, stagger } from "@/components/shared/page"
 import { ScoreBadge } from "@/components/shared/score-badge"
-import { SignalChips } from "@/components/shared/signal-chips"
+import { SignalIcons } from "@/components/shared/signal-chips"
 import {
   fmtAmount,
   trustTally,
@@ -58,9 +58,8 @@ function TrustDots({ claims }) {
   ]
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-card px-2.5 py-1"
+      className="inline-flex size-7 items-center justify-center gap-0.5 rounded-md border border-border bg-white"
       title={`Claim trust: ${t.high} high · ${t.medium} medium · ${t.low} low`}>
-      <span className="text-[11px] font-medium text-muted-foreground">trust</span>
       {groups.map(
         ({ n, cls, label }) =>
           n > 0 && (
@@ -90,8 +89,8 @@ function Row({ opp }) {
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-[15px] font-semibold tracking-tight">{opp.company_name}</span>
             <Badge variant={verdictMeta[opp.verdict].variant}>{verdictMeta[opp.verdict].label}</Badge>
-            <ChannelBadge channel={opp.sourcing_channel} />
-            {opp.cold_start_flag && <ColdStartBadge />}
+            <ChannelBadge channel={opp.sourcing_channel} compact />
+            {opp.cold_start_flag && <ColdStartBadge compact />}
             {opp.enrichment && (
               <span className="text-[11px] font-medium text-muted-foreground">
                 {opp.enrichment.sector} · {opp.enrichment.stage} · {opp.enrichment.geography}
@@ -106,7 +105,7 @@ function Row({ opp }) {
                 avatarUrls={opp.enrichment.founders.map((f) => ({ imageUrl: f.avatar, alt: `${f.name} — ${f.role}` }))}
               />
             )}
-            <SignalChips signals={opp.public_signals} />
+            <SignalIcons signals={opp.public_signals} />
             <TrustDots claims={opp.claim_trust} />
           </div>
         </div>
