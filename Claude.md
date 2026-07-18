@@ -1,6 +1,7 @@
 # FounderScore — Project Rules
 
 @shared/contract.md
+@SPEC.md
 
 - Tech stack is locked in `/shared/contract.md` — do not suggest alternatives without a sync-point discussion.
 - Build fixtures live in `/shared/fixtures/` — use these for all test/mock data.

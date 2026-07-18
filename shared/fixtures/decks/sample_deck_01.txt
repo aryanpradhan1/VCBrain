@@ -1,0 +1,27 @@
+=== SLIDE 1: Problem & Product ===
+Restaurants lose 8-12% of revenue to no-shows and last-minute cancellations, with no
+reliable way to predict which reservations will fall through. NoShow AI ingests a
+restaurant's reservation history plus public event and weather data to flag high-risk
+bookings in real time, letting staff overbook safely and recapture lost revenue.
+
+=== SLIDE 2: Market ===
+The US restaurant reservation software market is $2.1B and growing 14% YoY. There are
+roughly 660,000 full-service restaurants in the US; we estimate a $480M immediately
+addressable segment among the ~180,000 restaurants already running digital reservation
+systems.
+
+=== SLIDE 3: Traction ===
+Live in 34 restaurants across Austin and Chicago since our beta launch 5 months ago.
+Restaurants using NoShow AI have recovered an average of $3,200/month in previously lost
+covers. MRR is $18,400, up from $6,100 three months ago. Two regional restaurant groups
+(12 additional locations) are in signed pilot agreements starting next quarter.
+
+=== SLIDE 4: Team ===
+Priya Raman (CEO) — ex-OpenTable product lead, shipped the waitlist product used by 20K
+restaurants. Devon Cole (CTO) — ex-Uber, built real-time ETA prediction models serving
+50M+ rides/month. Third time working together; previously built and sold a scheduling
+tool to a POS vendor in 2021.
+
+=== SLIDE 5: The Ask ===
+Raising a $1.5M seed at a $9M pre-money valuation to hire 2 engineers and 1 GTM lead,
+extend runway to 18 months, and expand to 150 restaurants across 3 additional metros.
