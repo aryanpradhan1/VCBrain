@@ -81,11 +81,6 @@ function Row({ opp }) {
       <Link
         to={`/opportunities/${opp.company_id}`}
         className="group grid gap-3 px-4 py-4 transition-colors hover:bg-slate-50/70 sm:grid-cols-[minmax(0,1fr)_126px] sm:gap-6 sm:px-5 lg:grid-cols-[minmax(0,1fr)_134px_106px]">
-        <span
-          className="hidden size-10 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-sm font-bold text-white sm:flex">
-          {opp.company_name[0]}
-        </span>
-
         <div className="flex min-w-0 gap-3">
         <span
           className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-sm font-bold text-white sm:hidden">
