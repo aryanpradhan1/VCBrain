@@ -49,30 +49,30 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
+    --background: oklch(0.992 0.001 250);
+    --foreground: oklch(0.17 0.012 255);
     --card: oklch(1 0 0);
     --card-foreground: oklch(0.145 0 0);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.145 0 0);
     --primary: oklch(0.205 0 0);
     --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
+    --secondary: oklch(0.975 0.002 255);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.97 0 0);
     --muted-foreground: oklch(0.556 0 0);
     --accent: oklch(0.97 0 0);
     --accent-foreground: oklch(0.205 0 0);
     --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
+    --border: oklch(0.91 0.005 255);
+    --input: oklch(0.925 0.004 255);
     --ring: oklch(0.708 0 0);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
+    --radius: 0.75rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -122,9 +122,157 @@
     @apply border-border outline-ring/50;
     }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
     }
   html {
     @apply font-sans;
     }
+  ::selection {
+    background: oklch(0.93 0.03 255);
+    }
+}
+
+/* Magic UI vendored keyframes (shimmer-button, animated-shiny-text) */
+@theme {
+  --animate-shimmer-slide: shimmer-slide var(--speed) ease-in-out infinite alternate;
+  --animate-spin-around: spin-around calc(var(--speed) * 2) infinite linear;
+  --animate-shiny-text: shiny-text 8s infinite;
+
+  @keyframes shimmer-slide {
+    to {
+      transform: translate(calc(100cqw - 100%), 0);
+    }
+  }
+  @keyframes spin-around {
+    0% {
+      transform: translateZ(0) rotate(0);
+    }
+    15%, 35% {
+      transform: translateZ(0) rotate(90deg);
+    }
+    65%, 85% {
+      transform: translateZ(0) rotate(270deg);
+    }
+    100% {
+      transform: translateZ(0) rotate(360deg);
+    }
+  }
+  @keyframes shiny-text {
+    0%, 90%, 100% {
+      background-position: calc(-100% - var(--shiny-width)) 0;
+    }
+    30%, 60% {
+      background-position: calc(100% + var(--shiny-width)) 0;
+    }
+  }
+}
+
+@utility glass {
+  background: color-mix(in oklch, var(--background) 72%, transparent);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+}
+
+@utility card-hairline {
+  box-shadow:
+    0 1px 2px oklch(0.2 0.01 255 / 0.035);
+}
+
+@utility card-hairline-hover {
+  box-shadow:
+    0 3px 10px oklch(0.2 0.01 255 / 0.065);
+}
+
+/* The memo is an investor-ready document as well as a screen. Browser print lets
+   the team save it as a PDF without maintaining a second, drifting template. */
+.memo-print-heading {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 14mm;
+  }
+
+  html, body {
+    background: white !important;
+    font-size: 10pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  aside, header, .print-hidden, .memo-expand-control, button, a[href] {
+    display: none !important;
+  }
+
+  .shell-content, .shell-page {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .memo-document {
+    display: block !important;
+  }
+
+  .memo-print-heading {
+    display: block;
+    margin: 0 0 9mm;
+    padding-bottom: 4mm;
+    border-bottom: 1px solid #dbe3ee;
+  }
+
+  .memo-print-brand {
+    color: #334155;
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .memo-print-brand span, .memo-print-meta {
+    color: #64748b;
+    font-weight: 500;
+  }
+
+  .memo-print-company {
+    margin-top: 2mm;
+    color: #0f172a;
+    font-size: 24pt;
+    font-weight: 700;
+    letter-spacing: -.04em;
+  }
+
+  .memo-print-meta {
+    margin-top: 1mm;
+    font-size: 9pt;
+  }
+
+  .memo-summary-rail {
+    position: static !important;
+    margin-bottom: 6mm;
+  }
+
+  section, .rounded-2xl, .rounded-xl, .card-hairline {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  .memo-document > div > div {
+    break-inside: avoid;
+  }
+
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  .min-w-\[540px\] {
+    min-width: 0 !important;
+  }
+
+  svg {
+    overflow: visible;
+  }
 }
