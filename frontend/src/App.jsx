@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom"
 
 import { InvestorShell } from "@/components/layout/investor-shell"
+import { SourceDrawerProvider } from "@/components/shared/source-drawer"
 import Apply from "@/pages/apply"
 import Dashboard from "@/pages/dashboard"
 import FounderResults from "@/pages/founder-results"
@@ -11,6 +12,7 @@ import Thesis from "@/pages/thesis"
 export default function App() {
   return (
     <BrowserRouter>
+      <SourceDrawerProvider>
       <Routes>
         {/* Investor workspace — full detail, decision controls */}
         <Route element={<InvestorShell />}>
@@ -24,6 +26,7 @@ export default function App() {
         <Route path="/founder/:id" element={<FounderResults />} />
         <Route path="/founder/:id/interview" element={<Interview />} />
       </Routes>
+      </SourceDrawerProvider>
     </BrowserRouter>
   )
 }

@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { NumberTicker } from "@/components/magicui/number-ticker"
 import { BlurFade } from "@/components/magicui/blur-fade"
+import { AvatarCircles } from "@/components/magicui/avatar-circles"
 import { AxisDots, ChannelBadge, ColdStartBadge } from "@/components/shared/chips"
 import { Page, stagger } from "@/components/shared/page"
 import { ScoreBadge } from "@/components/shared/score-badge"
@@ -100,21 +101,39 @@ function Row({ opp }) {
             <Badge variant={verdictMeta[opp.verdict].variant}>{verdictMeta[opp.verdict].label}</Badge>
             <ChannelBadge channel={opp.sourcing_channel} />
             {opp.cold_start_flag && <ColdStartBadge />}
+            {opp.enrichment && (
+              <span className="text-[11px] font-medium text-muted-foreground">
+                {opp.enrichment.sector} · {opp.enrichment.stage} · {opp.enrichment.geography}
+              </span>
+            )}
           </div>
           <p className="truncate text-sm text-muted-foreground">{pitchOf(opp)}</p>
           <div className="flex flex-wrap items-center gap-1.5">
+            {opp.enrichment?.founders && (
+              <AvatarCircles
+                size={22}
+                avatarUrls={opp.enrichment.founders.map((f) => ({ imageUrl: f.avatar, alt: `${f.name} — ${f.role}` }))}
+              />
+            )}
             <SignalChips signals={opp.public_signals} />
             <TrustDots claims={opp.claim_trust} />
           </div>
         </div>
 
-        <div className="hidden shrink-0 flex-col items-end gap-1.5 sm:flex">
-          <AxisDots
-            founder_axis={opp.founder_axis}
-            market_axis={opp.market_axis}
-            idea_vs_market_axis={opp.idea_vs_market_axis}
-          />
-          <ScoreBadge score={opp.founder_score} size="sm" />
+        <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
+          <span className="text-[9px] font-semibold tracking-[0.08em] text-muted-foreground/60 uppercase">
+            Founder Score
+          </span>
+          <span title="value ± confidence interval — the band narrows as independent evidence corroborates">
+            <ScoreBadge score={opp.founder_score} size="sm" />
+          </span>
+          <span title="Founder / Market / Idea-vs-Market — three independent axes, never averaged">
+            <AxisDots
+              founder_axis={opp.founder_axis}
+              market_axis={opp.market_axis}
+              idea_vs_market_axis={opp.idea_vs_market_axis}
+            />
+          </span>
           <span className="text-[11px] font-medium text-muted-foreground tabular-nums">
             {opp.amount_recommended > 0 ? `${fmtAmount(opp.amount_recommended)} recommended` : "no check"}
           </span>
