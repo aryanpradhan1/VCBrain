@@ -126,10 +126,7 @@ function Row({ opp }) {
 
         <div className="hidden flex-col items-end justify-center lg:flex">
           {opp.amount_recommended > 0 ? (
-            <>
-              <span className="text-sm font-semibold tracking-tight tabular-nums">{fmtAmount(opp.amount_recommended)}</span>
-              <span className="mt-0.5 text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase">Proposed check</span>
-            </>
+            <span className="text-sm font-semibold tracking-tight tabular-nums">{fmtAmount(opp.amount_recommended)}</span>
           ) : (
             <span className="text-xs font-medium text-muted-foreground">No check</span>
           )}
