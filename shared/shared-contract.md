@@ -2,24 +2,38 @@
 
 Everything here is locked. Both the root `CLAUDE.md` and `AGENTS.md` are just pointers to this file — if the stack or a data shape changes at a sync point, edit only this file.
 
+## What we're building, and why — read this before anything else, whichever module you own
+
+This is a submission for Hack-Nation's 6th Global AI Hackathon, Maschmeyer Group's challenge track: "The VC Brain — Deploying $100K Checks in 24 Hours."
+
+**The problem:** founders stay invisible until they know the right person. Their story is scattered across pitch decks, GitHub repos, half-built websites, social posts nobody's reading closely. Diligence takes weeks. Capital flows through networks, not merit. By the time a fund finally sees a founder clearly, dozens of equally strong ones have already given up waiting.
+
+**What we're building:** a system that finds strong founders before they start fundraising, judges them fast and honestly, and gets a real $100K decision back to them within 24 hours — whether they were sourced (spotted on GitHub/Devpost/arXiv before they applied) or inbound (applied directly). Scope is Sourcing → Screening → Diligence → Decision. Portfolio monitoring, follow-on, fund ops, and exit are explicitly out of scope — don't build UI or logic for them.
+
+**The mechanism that makes this more than a form and a spreadsheet:** every founder gets a **Founder Score** — a persistent, cross-application number, a credit score for founders, that never resets and gets sharper with every milestone (see the formula below). A founder who doesn't get funded this time still walks away with something real. This is the retention hook and the thing that makes the product defensible.
+
+**The test that decides what gets built with AI and what doesn't:** "The bottleneck this replaces isn't a spreadsheet — it's an analyst's days of unstructured reading and judgment. Anything a spreadsheet could already do, we didn't build with AI. Everything we did build with AI is exactly the part a spreadsheet can't do." Screening's cheap pre-filter, raw signal stats, and the Thesis Engine's keyword gate stay rule-based on purpose — that's correct, not a shortcut. Multi-axis reasoning, Founder-Market Fit, the Interview Agent, and Diligence's cross-referencing are where AI is load-bearing — delete those and the product collapses into exactly the slow, network-gated status quo this is supposed to replace.
+
+**How the judges are scoring it** (build in this priority order — see "Never cut first" at the bottom of this file too):
+- Data Architecture and Intelligence — 30% — ingestion, dedup, and honesty about founders with no track record specifically.
+- Investment Utility & Execution — 30% — does this produce a recommendation a human could act on within 24 hours.
+- Intelligent Analysis and Trust — 25% — does the Trust Score actually surface evidence and uncertainty, not just assert a number.
+- User Experience and Design — 15% — real, but protect the other three first if time runs short.
+
+**The one UI rule every agent should know, even backend:** founders only ever see their Founder Score + a plain-language narrative — never the 3-axis scores, SWOT, or memo, which are the fund's confidential work product. Full detail and examples are in `/frontend/CLAUDE.md`, but every agent's output should assume this split exists downstream — e.g. the founder-facing API response is deliberately much thinner than the investor-facing one.
+
 ## Tech stack — locked before anyone codes
 
 | Layer | Choice |
 |---|---|
 | Backend | FastAPI (Python) |
-| LLM provider | **OpenAI** — model string: `gpt-5.5-2026-04-23` |
-| Search/retrieval | **Tavily API** — used by Diligence/Validator (claim cross-referencing) and Signal Intake (outbound public-footprint checks) |
+| LLM provider | OpenAI |
 | Frontend | React + Vite + Tailwind + shadcn/ui |
 | Data storage | SQLite |
 | Deployment | Railway/Render (backend) + Vercel (frontend), only if time allows after 1:00 AM. Localhost + screen recording is the safe fallback — don't let deployment risk eat build time. |
 | Dummy data | 3 synthetic decks (strong / cold-start / weak) + mocked public-signal fixtures, in `/shared/fixtures/`, written before Block 1 |
 
 **Change process:** proposed only at a sync point, never mid-block unilaterally. One person (stack owner, likely B) is the only one who edits this table. Any change is logged in `/shared/CHANGELOG.md` with a timestamp. Hard rule: no stack changes after Block 2 (8:30 PM) except a genuine blocker — work around it instead of replatforming.
-
-## External API Keys
-
-- **OpenAI key** → set as `OPENAI_API_KEY` env var → used by B (Multi-Axis Scorer), C (Diligence/Validator, Memo Synthesizer, Interview Agent)
-- **Tavily key** → set as `TAVILY_API_KEY` env var → used by A (Signal Intake outbound scanning), C (Diligence/Validator)
 
 ## Architecture — three layers
 
@@ -33,7 +47,7 @@ Everything here is locked. Both the root `CLAUDE.md` and `AGENTS.md` are just po
 
 - **Sourcing**: Inbound (apply: deck + name) + Outbound (bounded daily scan → thesis-filtered → partial Founder Score → activate above threshold → converge into one funnel)
 - **Screening**: a fast, shallow 3-axis pass on readily-available signals — a real cheap scoring pass, not just a rule
-- **Diligence**: truth-gap check — verifies evidence via Tavily, logs gaps, writes back to Memory
+- **Diligence**: truth-gap check — verifies evidence, logs gaps, writes back to Memory
 - **Decision**: $100K recommendation + adversarial check + portfolio check (one-time overlap check against existing portfolio sectors)
 
 ## Founder Score
@@ -90,13 +104,11 @@ Rule-based, on purpose: Screen's cheap pre-filter, raw signal statistics, Thesis
   "resilience_score": 100
 }
 
-// Diligence/Validator output — UPDATED: now includes Tavily sourcing + Memory write-back signal
+// Diligence/Validator output
 {
   "flagged_claims": [
     { "claim": "market_size", "issue": "string", "severity": "low|medium|high" }
-  ],
-  "tavily_sources_checked": ["string"],
-  "memory_update": true
+  ]
 }
 
 // Trust Score output — per claim, never per-company
@@ -159,9 +171,3 @@ B's API glue assembles the per-agent contracts above into one object per opportu
 - **strong**: founder score 80+, all three axes bullish, high-confidence trust claims throughout, `sourcing_channel: "inbound"`, `cold_start_flag: false`
 - **cold-start**: `cold_start_flag: true`, wide interval (e.g. `38 ± 24`), founder/market axis rationales explicitly note thin public data, low-confidence trust claims, `verdict: "review"`
 - **weak**: mid-to-low founder score, at least one `bear` axis, at least one flagged/contradicted claim, non-empty `adversarial_view.challenges`, `verdict: "decline"`
-
-## Changelog
-
-- [3:58] Design direction confirmed as light/Notion-style (not dark/Bloomberg-terminal) per D — rationale: brief names both "Notion-level approachability" and "Bloomberg-level depth," light better serves the approachability half. Confirmed at [sync point].
-- [3:58] LLM provider and Tavily locked in — OpenAI (`gpt-5.5-2026-04-23`) + Tavily API.
-- [3:58] Diligence/Validator output updated to include `tavily_sources_checked` and `memory_update` fields.

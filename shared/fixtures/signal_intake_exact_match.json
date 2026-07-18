@@ -1,0 +1,47 @@
+{
+  "founder_id": "f003",
+  "company_id": "c003",
+  "deck_claims": [
+    {
+      "field": "team",
+      "value": "CEO: Former Google Brain researcher, PhD Stanford. 6 years ML infrastructure.",
+      "source_slide": 3
+    },
+    {
+      "field": "problem_product",
+      "value": "LLM inference optimization platform. Reduces inference costs by 70% through model compression and intelligent routing.",
+      "source_slide": 2
+    },
+    {
+      "field": "market_size",
+      "value": "$12B AI infrastructure market, growing 45% annually",
+      "source_slide": 5
+    },
+    {
+      "field": "traction",
+      "value": "3 enterprise pilots, $2K MRR",
+      "source_slide": 7
+    },
+    {
+      "field": "ask",
+      "value": "Raising $100K seed round",
+      "source_slide": 9
+    }
+  ],
+  "public_signals": {
+    "github": {
+      "repos": 8,
+      "commit_consistency_score": 0.75,
+      "longevity_months": 24
+    },
+    "devpost_hn": {
+      "launches": 1,
+      "total_upvotes": 89
+    },
+    "arxiv": {
+      "papers": 3
+    }
+  },
+  "sourcing_channel": "outbound",
+  "cold_start_flag": false
+}

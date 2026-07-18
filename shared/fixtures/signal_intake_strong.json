@@ -1,0 +1,42 @@
+{
+  "founder_id": "f001",
+  "company_id": "c001",
+  "deck_claims": [
+    {
+      "field": "team",
+      "value": "CEO: 8 years backend infrastructure experience at Meta, led distributed systems team. Built 3 prior SaaS products (2 acquired). MIT CS '14.",
+      "source_slide": 3
+    },
+    {
+      "field": "traction",
+      "value": "12,000 MAU, 40% MoM growth, $18K MRR, 95% retention",
+      "source_slide": 7
+    },
+    {
+      "field": "market_size",
+      "value": "$45B TAM in developer tools, growing 18% YoY",
+      "source_slide": 5
+    },
+    {
+      "field": "problem_product",
+      "value": "AI-assisted code review for production-scale distributed systems. Reduces incident response time by 60%.",
+      "source_slide": 2
+    }
+  ],
+  "public_signals": {
+    "github": {
+      "repos": 24,
+      "commit_consistency_score": 0.85,
+      "longevity_months": 48
+    },
+    "devpost_hn": {
+      "launches": 3,
+      "total_upvotes": 520
+    },
+    "arxiv": {
+      "papers": 0
+    }
+  },
+  "sourcing_channel": "inbound",
+  "cold_start_flag": false
+}
