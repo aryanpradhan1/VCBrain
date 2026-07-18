@@ -58,7 +58,7 @@ function TrustDots({ claims }) {
   ]
   return (
     <span
-      className="inline-flex size-7 items-center justify-center gap-0.5 rounded-md border border-border bg-white"
+      className="inline-flex h-7 min-w-7 items-center justify-center gap-0.5 rounded-md border border-border bg-white px-1.5"
       title={`Claim trust: ${t.high} high · ${t.medium} medium · ${t.low} low`}>
       {groups.map(
         ({ n, cls, label }) =>
@@ -79,7 +79,7 @@ function Row({ opp }) {
     <motion.li variants={stagger.item}>
       <Link
         to={`/opportunities/${opp.company_id}`}
-        className="group grid gap-3 px-4 py-4 transition-colors hover:bg-slate-50/70 sm:grid-cols-[minmax(0,1fr)_126px] sm:gap-6 sm:px-5 lg:grid-cols-[minmax(0,1fr)_134px_106px]">
+        className="group grid gap-3 px-4 py-4 transition-colors hover:bg-slate-50/70 sm:grid-cols-[minmax(0,1fr)_126px] sm:gap-6 sm:px-5 lg:grid-cols-[minmax(0,1fr)_134px_126px]">
         <div className="flex min-w-0 gap-3">
         <span
           className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-sm font-bold text-white sm:hidden">
@@ -125,9 +125,14 @@ function Row({ opp }) {
         </div>
 
         <div className="hidden flex-col items-end justify-center lg:flex">
-          <span className="text-[11px] font-medium text-muted-foreground tabular-nums">
-            {opp.amount_recommended > 0 ? `${fmtAmount(opp.amount_recommended)} recommended` : "no check"}
-          </span>
+          {opp.amount_recommended > 0 ? (
+            <>
+              <span className="text-sm font-semibold tracking-tight tabular-nums">{fmtAmount(opp.amount_recommended)}</span>
+              <span className="mt-0.5 text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase">Proposed check</span>
+            </>
+          ) : (
+            <span className="text-xs font-medium text-muted-foreground">No check</span>
+          )}
         </div>
       </Link>
     </motion.li>
@@ -251,7 +256,7 @@ export default function Dashboard() {
 
       {!loading && !error && filtered.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-border bg-card">
-          <div className="hidden grid-cols-[minmax(0,1fr)_134px_106px] gap-6 border-b border-border bg-slate-50/70 px-5 py-2.5 text-[10px] font-semibold tracking-[0.1em] text-muted-foreground uppercase lg:grid">
+          <div className="hidden grid-cols-[minmax(0,1fr)_134px_126px] gap-6 border-b border-border bg-slate-50/70 px-5 py-2.5 text-[10px] font-semibold tracking-[0.1em] text-muted-foreground uppercase lg:grid">
             <span>Company & diligence signal</span><span className="text-right">Founder Score</span><span className="text-right">Recommended</span>
           </div>
           <motion.ul variants={stagger.container} initial="initial" animate="animate" className="divide-y divide-border">
