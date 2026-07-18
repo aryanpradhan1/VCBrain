@@ -26,7 +26,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { BorderBeam } from "@/components/magicui/border-beam"
 import { AgentPipeline } from "@/components/shared/agent-pipeline"
 import { MarketChart, ScoreFormulaBar } from "@/components/shared/charts"
 import { ChannelBadge, ColdStartBadge, RatingPill } from "@/components/shared/chips"
@@ -34,7 +33,7 @@ import { DecisionBar } from "@/components/shared/decision-bar"
 import { Page, stagger } from "@/components/shared/page"
 import { ScoreRing } from "@/components/shared/score-ring"
 import { Expandable, Section } from "@/components/shared/section"
-import { avatarGradient, scoreDot, verdictMeta } from "@/components/shared/semantics"
+import { scoreDot, verdictMeta } from "@/components/shared/semantics"
 import { SignalChips } from "@/components/shared/signal-chips"
 import { useSources } from "@/components/shared/source-drawer"
 import { ErrorBanner } from "@/components/shared/states"
@@ -67,15 +66,12 @@ function CitationChips({ citations, opp }) {
 // ── Rail ──────────────────────────────────────────────────────────────────
 function SummaryRail({ opp }) {
   const e = opp.enrichment
-  const approved = opp.verdict === "approve"
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-card p-5 card-hairline">
-      {approved && <BorderBeam size={70} duration={7} colorFrom="#10b981" colorTo="#2dd4bf" />}
+    <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex flex-col items-center text-center">
         <span
           className={cn(
-            "mb-3 flex size-12 items-center justify-center rounded-xl bg-gradient-to-br text-base font-bold text-white shadow-sm",
-            avatarGradient(opp.company_name)
+            "mb-3 flex size-12 items-center justify-center rounded-lg bg-slate-800 text-base font-bold text-white",
           )}>
           {opp.company_name[0]}
         </span>
@@ -113,7 +109,7 @@ function SummaryRail({ opp }) {
 
         <div className="w-full space-y-3 text-left">
           {opp.thesis && (
-            <div className="rounded-xl bg-secondary/60 px-3.5 py-3">
+            <div className="rounded-lg border border-border bg-slate-50/70 px-3.5 py-3">
               <div className="flex items-center gap-1.5 text-[11px] font-semibold">
                 <CircleCheck className={cn("size-3.5", opp.thesis.thesis_match ? "text-emerald-500" : "text-red-400")} />
                 Thesis {opp.thesis.thesis_match ? "match" : "miss"}
@@ -175,12 +171,12 @@ function Snapshot({ e }) {
   return (
     <div className="grid gap-3 md:grid-cols-3">
       {cards.map((c) => (
-        <div key={c.title} className="rounded-2xl bg-card p-4 card-hairline">
+        <div key={c.title} className="rounded-xl border border-border bg-card p-4">
           <div className="text-[10px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">{c.title}</div>
           <p className="mt-1.5 text-sm leading-relaxed">{c.body}</p>
         </div>
       ))}
-      <div className="rounded-2xl bg-card p-4 card-hairline">
+      <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
             Product-market fit
@@ -210,7 +206,7 @@ function SocialIcon({ href, icon: Icon, label }) {
 
 function FounderCard({ founder }) {
   return (
-    <div className="flex gap-4 rounded-2xl bg-card p-4 card-hairline">
+    <div className="flex gap-4 rounded-xl border border-border bg-card p-4">
       <img
         src={founder.avatar}
         alt={founder.name}
@@ -421,7 +417,7 @@ function MemoBody({ memo, expanded = false }) {
 function AdversarialPanel({ challenges }) {
   if (!challenges?.length) return null
   return (
-    <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 p-5">
+    <div className="rounded-xl border border-amber-200/80 bg-amber-50/70 p-5">
       <div className="mb-2.5 flex items-center gap-2 text-amber-800">
         <ShieldAlert className="size-4" />
         <span className="text-sm font-semibold tracking-tight">Adversarial view — the case against</span>
@@ -564,11 +560,9 @@ export default function Memo() {
                   icon={Workflow}
                   title="How this was produced"
                   sub="Six agents, in order — deterministic gates vs. AI reasoning, labeled honestly">
-                  <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
-                    <div className="rounded-2xl bg-card p-5 card-hairline">
-                      <AgentPipeline trace={e.agent_trace} />
-                    </div>
-                    <div className="rounded-2xl bg-card p-4 card-hairline">
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_250px]">
+                    <AgentPipeline trace={e.agent_trace} />
+                    <div className="rounded-xl border border-border bg-card p-4">
                       <div className="mb-2 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
                         The Founder Score formula
                       </div>
@@ -611,7 +605,7 @@ export default function Memo() {
                   title="Market"
                   sub="Sizing re-derived by Diligence — not taken from the deck at face value"
                   right={<RatingPill rating={opp.market_axis.rating} />}>
-                  <div className="rounded-2xl bg-card p-5 card-hairline">
+                  <div className="rounded-xl border border-border bg-card p-5">
                     <MarketChart market={e.market} />
                     <Separator className="my-4" />
                     <div className="mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">

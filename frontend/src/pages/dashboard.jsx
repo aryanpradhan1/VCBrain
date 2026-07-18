@@ -3,7 +3,6 @@ import { Link, useSearchParams } from "react-router-dom"
 import { motion } from "motion/react"
 import {
   Banknote,
-  ChevronRight,
   Gauge,
   Inbox,
   Radar,
@@ -13,15 +12,12 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { NumberTicker } from "@/components/magicui/number-ticker"
-import { BlurFade } from "@/components/magicui/blur-fade"
 import { AvatarCircles } from "@/components/magicui/avatar-circles"
 import { AxisDots, ChannelBadge, ColdStartBadge } from "@/components/shared/chips"
 import { Page, stagger } from "@/components/shared/page"
 import { ScoreBadge } from "@/components/shared/score-badge"
 import { SignalChips } from "@/components/shared/signal-chips"
 import {
-  avatarGradient,
   fmtAmount,
   trustTally,
   verdictMeta,
@@ -34,10 +30,9 @@ import { pitchOf } from "@/fixtures/opportunities"
 
 const verdictFilters = ["all", "approve", "review", "decline"]
 
-function StatTile({ icon: Icon, label, value, suffix, prefix, caption, delay, tint }) {
+function StatTile({ icon: Icon, label, value, suffix, prefix, caption, tint }) {
   return (
-    <BlurFade delay={delay} className="min-w-0">
-      <div className="flex h-full flex-col rounded-2xl bg-card p-4 card-hairline">
+      <div className="flex h-full min-w-0 flex-col rounded-xl border border-border bg-card p-4">
         <div className="flex items-center gap-2">
           <span className={cn("flex size-7 items-center justify-center rounded-lg", tint)}>
             <Icon className="size-3.5" strokeWidth={2.2} />
@@ -46,12 +41,11 @@ function StatTile({ icon: Icon, label, value, suffix, prefix, caption, delay, ti
         </div>
         <div className="mt-2.5 text-2xl font-semibold tracking-tight tabular-nums">
           {prefix}
-          <NumberTicker value={value} />
+          {value}
           {suffix}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{caption}</div>
       </div>
-    </BlurFade>
   )
 }
 
@@ -86,15 +80,17 @@ function Row({ opp }) {
     <motion.li variants={stagger.item}>
       <Link
         to={`/opportunities/${opp.company_id}`}
-        className="group flex items-center gap-4 rounded-2xl bg-card p-4 card-hairline transition-all duration-200 hover:card-hairline-hover hover:-translate-y-px sm:px-5">
+        className="group grid gap-3 px-4 py-4 transition-colors hover:bg-slate-50/70 sm:grid-cols-[minmax(0,1fr)_126px] sm:gap-6 sm:px-5 lg:grid-cols-[minmax(0,1fr)_134px_106px]">
         <span
-          className={cn(
-            "flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-sm font-bold text-white shadow-sm",
-            avatarGradient(opp.company_name)
-          )}>
+          className="hidden size-10 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-sm font-bold text-white sm:flex">
           {opp.company_name[0]}
         </span>
 
+        <div className="flex min-w-0 gap-3">
+        <span
+          className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-sm font-bold text-white sm:hidden">
+          {opp.company_name[0]}
+        </span>
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-[15px] font-semibold tracking-tight">{opp.company_name}</span>
@@ -108,7 +104,7 @@ function Row({ opp }) {
             )}
           </div>
           <p className="truncate text-sm text-muted-foreground">{pitchOf(opp)}</p>
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
             {opp.enrichment?.founders && (
               <AvatarCircles
                 size={22}
@@ -119,9 +115,10 @@ function Row({ opp }) {
             <TrustDots claims={opp.claim_trust} />
           </div>
         </div>
+        </div>
 
-        <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
-          <span className="text-[9px] font-semibold tracking-[0.08em] text-muted-foreground/60 uppercase">
+        <div className="hidden shrink-0 flex-col items-end gap-1.5 sm:flex">
+          <span className="text-[9px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
             Founder Score
           </span>
           <span title="value ± confidence interval — the band narrows as independent evidence corroborates">
@@ -134,12 +131,10 @@ function Row({ opp }) {
               idea_vs_market_axis={opp.idea_vs_market_axis}
             />
           </span>
-          <span className="text-[11px] font-medium text-muted-foreground tabular-nums">
+          <span className="hidden text-[11px] font-medium text-muted-foreground tabular-nums lg:block">
             {opp.amount_recommended > 0 ? `${fmtAmount(opp.amount_recommended)} recommended` : "no check"}
           </span>
         </div>
-
-        <ChevronRight className="size-4 shrink-0 text-slate-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-slate-400" />
       </Link>
     </motion.li>
   )
@@ -147,7 +142,7 @@ function Row({ opp }) {
 
 function RowSkeleton() {
   return (
-    <div className="flex items-center gap-4 rounded-2xl bg-card p-4 card-hairline sm:px-5">
+    <div className="flex items-center gap-4 border-b border-border px-4 py-4 sm:px-5">
       <Skeleton className="size-11 rounded-xl" />
       <div className="flex-1 space-y-2">
         <Skeleton className="h-4 w-52" />
@@ -190,12 +185,13 @@ export default function Dashboard() {
 
   return (
     <Page>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <div className="mb-2 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">Investment workspace</div>
+          <h1 className="text-[28px] font-semibold tracking-[-0.035em]">
             {sourcingOnly ? "Sourcing radar" : "Pipeline"}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1.5 text-sm text-muted-foreground">
             {sourcingOnly
               ? "Founders we found before they applied — activated above the score threshold."
               : "Ranked by Founder Score — inbound and sourced, one funnel."}
@@ -207,17 +203,17 @@ export default function Dashboard() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search founders, sectors, signals…"
-            className="rounded-full pl-9"
+            className="h-10 rounded-lg bg-card pl-9 shadow-none"
           />
         </div>
       </div>
 
       {stats && (
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatTile icon={Inbox} label="In pipeline" value={stats.count} caption="all channels, deduplicated" delay={0} tint="bg-sky-50 text-sky-600" />
-          <StatTile icon={Gauge} label="Avg Founder Score" value={stats.avg} caption="event-triggered, never resets" delay={0.05} tint="bg-emerald-50 text-emerald-600" />
-          <StatTile icon={Radar} label="Sourced outbound" value={stats.sourced} caption="found before they applied" delay={0.1} tint="bg-violet-50 text-violet-600" />
-          <StatTile icon={Banknote} label="Checks recommended" value={stats.totalK} prefix="$" suffix="K" caption="pending partner decision" delay={0.15} tint="bg-amber-50 text-amber-600" />
+          <StatTile icon={Inbox} label="In pipeline" value={stats.count} caption="all channels, deduplicated" tint="bg-sky-50 text-sky-600" />
+          <StatTile icon={Gauge} label="Avg Founder Score" value={stats.avg} caption="event-triggered, never resets" tint="bg-emerald-50 text-emerald-600" />
+          <StatTile icon={Radar} label="Sourced outbound" value={stats.sourced} caption="found before they applied" tint="bg-violet-50 text-violet-600" />
+          <StatTile icon={Banknote} label="Checks recommended" value={stats.totalK} prefix="$" suffix="K" caption="pending partner decision" tint="bg-amber-50 text-amber-600" />
         </div>
       )}
 
@@ -228,7 +224,7 @@ export default function Dashboard() {
             type="button"
             onClick={() => setVerdict(v)}
             className={cn(
-              "rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-all duration-150 active:scale-95",
+              "rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors",
               verdict === v
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "bg-card text-muted-foreground card-hairline hover:text-foreground"
@@ -260,11 +256,14 @@ export default function Dashboard() {
       )}
 
       {!loading && !error && filtered.length > 0 && (
-        <motion.ul variants={stagger.container} initial="initial" animate="animate" className="space-y-3">
-          {filtered.map((opp) => (
-            <Row key={opp.company_id} opp={opp} />
-          ))}
-        </motion.ul>
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="hidden grid-cols-[minmax(0,1fr)_134px_106px] gap-6 border-b border-border bg-slate-50/70 px-5 py-2.5 text-[10px] font-semibold tracking-[0.1em] text-muted-foreground uppercase lg:grid">
+            <span>Company & diligence signal</span><span className="text-right">Founder Score</span><span className="text-right">Recommended</span>
+          </div>
+          <motion.ul variants={stagger.container} initial="initial" animate="animate" className="divide-y divide-border">
+            {filtered.map((opp) => <Row key={opp.company_id} opp={opp} />)}
+          </motion.ul>
+        </div>
       )}
     </Page>
   )

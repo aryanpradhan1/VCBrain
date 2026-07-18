@@ -2,10 +2,8 @@ import { useNavigate, useParams } from "react-router-dom"
 import { motion } from "motion/react"
 import { MessageCircle } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { DotPattern } from "@/components/magicui/dot-pattern"
-import { ShimmerButton } from "@/components/magicui/shimmer-button"
-import { AnimatedShinyText } from "@/components/magicui/animated-shiny-text"
 import { CountUp } from "@/components/shared/count-up"
 import { Page } from "@/components/shared/page"
 import { ErrorBanner } from "@/components/shared/states"
@@ -20,14 +18,8 @@ export default function FounderResults() {
   const { data, error, loading, retry } = useAsync(() => getFounderResults(id), [id])
 
   return (
-    <div className="relative min-h-dvh overflow-hidden">
-      <DotPattern
-        width={22}
-        height={22}
-        cr={1}
-        className="text-slate-300/60 mask-[radial-gradient(480px_circle_at_center,white,transparent)]"
-      />
-      <Page className="relative mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-6 py-16 text-center">
+    <div className="min-h-dvh bg-slate-50/60">
+      <Page className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-6 py-16 text-center">
         {error && <ErrorBanner message="Couldn't load your results just now." onRetry={retry} className="text-left" />}
 
         {loading && (
@@ -40,14 +32,12 @@ export default function FounderResults() {
 
         {data && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
-              <AnimatedShinyText className="text-sm font-medium tracking-wide uppercase">
-                Your Founder Score
-              </AnimatedShinyText>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }} className="text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+              Your Founder Score
             </motion.div>
 
             <div className="mt-4 flex items-baseline gap-3 tabular-nums">
-              <span className="bg-gradient-to-b from-slate-900 to-slate-600 bg-clip-text text-8xl font-semibold tracking-tighter text-transparent">
+              <span className="text-8xl font-semibold tracking-tighter text-slate-900">
                 <CountUp value={data.founder_score.value} duration={1.4} delay={0.2} />
               </span>
               <motion.span
@@ -76,13 +66,13 @@ export default function FounderResults() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.85, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
               className="mt-10 flex flex-col items-center">
-              <ShimmerButton
+              <Button
                 onClick={() => navigate(`/founder/${id}/interview`)}
-                background="oklch(0.19 0.01 255)"
-                className="gap-2 px-7 py-3 text-sm font-semibold shadow-lg">
+                size="lg"
+                className="gap-2 rounded-lg px-5 text-sm font-semibold shadow-sm">
                 <MessageCircle className="size-4" />
                 Start interview
-              </ShimmerButton>
+              </Button>
               <p className="mt-3 text-xs text-muted-foreground">
                 A short conversation that sharpens your score — it never resets.
               </p>

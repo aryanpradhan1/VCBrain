@@ -5,9 +5,7 @@ import { ArrowLeft, Check, CloudUpload, FileText, Sparkles, X } from "lucide-rea
 import confetti from "canvas-confetti"
 
 import { Input } from "@/components/ui/input"
-import { Particles } from "@/components/magicui/particles"
-import { ShimmerButton } from "@/components/magicui/shimmer-button"
-import { AnimatedShinyText } from "@/components/magicui/animated-shiny-text"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 // Inbound sourcing entry: deck + name, per the pipeline contract. Mocked client-side;
@@ -46,9 +44,7 @@ export default function Apply() {
   }
 
   return (
-    <div className="relative min-h-dvh overflow-hidden">
-      <Particles className="absolute inset-0" quantity={90} color="#64748b" ease={70} size={0.5} />
-
+    <div className="min-h-dvh bg-slate-50/60">
       <div className="relative mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center px-6 py-16">
         <Link
           to="/"
@@ -66,11 +62,11 @@ export default function Apply() {
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               className="w-full text-center">
-              <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-card px-3 py-1">
+              <div className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-card px-2.5 py-1">
                 <Sparkles className="size-3 text-amber-500" />
-                <AnimatedShinyText className="text-xs font-medium">
+                <span className="text-xs font-medium text-slate-700">
                   A real $100K decision within 24 hours
-                </AnimatedShinyText>
+                </span>
               </div>
               <h1 className="text-3xl font-semibold tracking-tight">
                 Get seen. Get scored.
@@ -108,7 +104,7 @@ export default function Apply() {
                   onDragLeave={() => setDragging(false)}
                   onDrop={onDrop}
                   className={cn(
-                    "flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-9 transition-all duration-200",
+                    "flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-6 py-9 transition-colors",
                     dragging
                       ? "scale-[1.01] border-slate-400 bg-slate-50"
                       : file
@@ -153,16 +149,15 @@ export default function Apply() {
                 </button>
 
                 <div className="flex justify-center pt-2">
-                  <ShimmerButton
+                  <Button
                     type="submit"
                     disabled={!canSubmit}
-                    background="oklch(0.19 0.01 255)"
                     className={cn(
-                      "px-8 py-3 text-sm font-semibold shadow-lg transition-opacity",
+                      "h-11 rounded-lg px-6 text-sm font-semibold shadow-sm transition-opacity",
                       !canSubmit && "pointer-events-none opacity-40"
                     )}>
                     Submit for scoring
-                  </ShimmerButton>
+                  </Button>
                 </div>
                 <p className="text-center text-[11px] text-muted-foreground">
                   We also read public signals — GitHub, Devpost, arXiv — so thin decks still get a fair look.

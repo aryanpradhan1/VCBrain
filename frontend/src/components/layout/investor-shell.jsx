@@ -70,9 +70,9 @@ function SectionLabel({ children }) {
 export function InvestorShell() {
   return (
     <div className="min-h-dvh">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[236px] flex-col border-r border-black/5 bg-background/60 px-3 py-4 backdrop-blur-xl lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[236px] flex-col border-r border-border bg-[#fbfcfd] px-3 py-4 lg:flex">
         <NavLink to="/" className="flex items-center gap-2.5 px-2.5 pb-2">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-gradient-to-br from-slate-900 to-slate-600 text-xs font-bold text-white shadow-sm">
+          <span className="flex size-7 items-center justify-center rounded-md bg-slate-900 text-xs font-bold text-white">
             F
           </span>
           <div className="leading-tight">
@@ -96,7 +96,7 @@ export function InvestorShell() {
         </nav>
 
         <div className="mt-auto space-y-3">
-          <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100/60 p-3 card-hairline">
+          <div className="rounded-lg border border-border bg-white p-3">
             <div className="flex items-center gap-1.5 text-xs font-semibold">
               <Sparkles className="size-3.5 text-amber-500" />
               24-hour decisions
@@ -106,7 +106,7 @@ export function InvestorShell() {
             </p>
           </div>
           <div className="flex items-center gap-2.5 px-2.5">
-            <span className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 text-[10px] font-bold text-white">
+            <span className="flex size-7 items-center justify-center rounded-full bg-slate-800 text-[10px] font-bold text-white">
               MG
             </span>
             <div className="flex-1 leading-tight">
@@ -118,8 +118,8 @@ export function InvestorShell() {
         </div>
       </aside>
 
-      <header className="glass sticky top-0 z-40 flex h-13 items-center gap-2.5 border-b border-black/5 px-4 lg:hidden">
-        <span className="flex size-6 items-center justify-center rounded-lg bg-gradient-to-br from-slate-900 to-slate-600 text-[11px] font-bold text-white">
+      <header className="sticky top-0 z-40 flex h-13 items-center gap-2.5 border-b border-border bg-background/95 px-4 backdrop-blur lg:hidden">
+        <span className="flex size-6 items-center justify-center rounded-md bg-slate-900 text-[11px] font-bold text-white">
           F
         </span>
         <span className="text-sm font-semibold tracking-tight">FounderScore</span>

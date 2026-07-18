@@ -1,4 +1,3 @@
-import { createRef, useMemo, useRef } from "react"
 import {
   Brain,
   Crosshair,
@@ -8,7 +7,6 @@ import {
   ShieldCheck,
 } from "lucide-react"
 
-import { AnimatedBeam } from "@/components/magicui/animated-beam"
 import { cn } from "@/lib/utils"
 
 const agentIcons = {
@@ -20,94 +18,50 @@ const agentIcons = {
   memo: FileText,
 }
 
-// "What the system actually did" — a clean beam row of agent nodes on top,
-// with each step's detail given room to breathe in a grid below.
-export function AgentPipeline({ trace, className }) {
-  const containerRef = useRef(null)
-  const nodeRefs = useMemo(() => (trace ?? []).map(() => createRef()), [trace])
+const duration = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`)
 
+// A trace is audit information, not a product-tour graphic. This deliberately
+// reads like a compact processing ledger: stage, method, finding, and latency.
+export function AgentPipeline({ trace, className }) {
   if (!trace?.length) return null
-  const totalMs = trace.reduce((a, t) => a + (t.ms ?? 0), 0)
+
+  const totalMs = trace.reduce((total, step) => total + (step.ms ?? 0), 0)
+  const aiSteps = trace.filter((step) => step.kind === "ai").length
 
   return (
-    <div className={className}>
-      {/* Beam row — icons and names only */}
-      <div className="overflow-x-auto pb-1">
-        <div ref={containerRef} className="relative min-w-[540px] px-2">
-          <div className="flex items-start justify-between">
-            {trace.map((step, i) => {
-              const Icon = agentIcons[step.agent] ?? Brain
-              const ai = step.kind === "ai"
-              return (
-                <div key={step.agent} className="flex w-20 flex-col items-center gap-2 text-center">
-                  <div
-                    ref={nodeRefs[i]}
-                    className={cn(
-                      "relative z-10 flex size-12 items-center justify-center rounded-2xl border bg-card shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md",
-                      ai ? "border-violet-200 text-violet-600" : "border-slate-200 text-slate-500"
-                    )}>
-                    <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full border border-card bg-secondary text-[8px] font-bold text-muted-foreground">
-                      {i + 1}
-                    </span>
-                    <Icon className="size-5" strokeWidth={1.9} />
-                  </div>
-                  <div className="text-[11px] font-semibold leading-tight">{step.label}</div>
-                  <div
-                    className={cn(
-                      "rounded-full px-2 py-px text-[9px] font-semibold tracking-wide uppercase",
-                      ai ? "bg-violet-50 text-violet-600" : "bg-slate-100 text-slate-500"
-                    )}>
-                    {ai ? "AI" : "Rule"}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          {nodeRefs.slice(0, -1).map((ref, i) => (
-            <AnimatedBeam
-              key={i}
-              containerRef={containerRef}
-              fromRef={ref}
-              toRef={nodeRefs[i + 1]}
-              duration={4}
-              delay={i * 0.4}
-              startYOffset={-24}
-              endYOffset={-24}
-              pathColor="#cbd5e1"
-              pathOpacity={0.45}
-              gradientStartColor="#8b5cf6"
-              gradientStopColor="#0ea5e9"
-            />
-          ))}
+    <div className={cn("overflow-hidden rounded-xl border border-border bg-card", className)}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-slate-50/70 px-4 py-3">
+        <div className="flex items-baseline gap-2">
+          <span className="text-sm font-semibold tracking-tight">Processing trace</span>
+          <span className="text-xs text-muted-foreground">{trace.length} stages · {aiSteps} AI judgments</span>
         </div>
+        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{(totalMs / 1000).toFixed(1)}s total</span>
       </div>
 
-      {/* Step details — spread out, two columns */}
-      <div className="mt-5 grid gap-x-8 gap-y-3 border-t border-border pt-4 sm:grid-cols-2">
-        {trace.map((step) => {
+      <ol className="divide-y divide-border">
+        {trace.map((step, index) => {
+          const Icon = agentIcons[step.agent] ?? Brain
           const ai = step.kind === "ai"
           return (
-            <div key={step.agent} className="rounded-xl px-2 py-1.5 transition-colors hover:bg-secondary/50 sm:-mx-2">
-              <div className="flex items-start gap-2.5">
-              <span className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", ai ? "bg-violet-400" : "bg-slate-300")} />
-              <div className="min-w-0 text-[12px] leading-relaxed">
-                <span className="font-semibold">{step.label}</span>
-                <span className="text-muted-foreground/70 tabular-nums">
-                  {" · "}
-                  {step.ms >= 1000 ? `${(step.ms / 1000).toFixed(1)}s` : `${step.ms}ms`}
-                </span>
-                <div className="text-muted-foreground">{step.summary}</div>
+            <li key={step.agent} className="grid grid-cols-[30px_minmax(118px,0.8fr)_minmax(0,2fr)_44px] items-center gap-3 px-4 py-3.5 sm:grid-cols-[30px_148px_minmax(0,2fr)_52px]">
+              <span className={cn("flex size-7 items-center justify-center rounded-md border", ai ? "border-violet-200 bg-violet-50 text-violet-700" : "border-slate-200 bg-slate-50 text-slate-600")}>
+                <Icon className="size-3.5" strokeWidth={2} />
+              </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-medium">{step.label}</span>
+                  <span className={cn("hidden rounded-sm px-1.5 py-0.5 text-[9px] font-bold tracking-[0.08em] uppercase sm:inline", ai ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-500")}>
+                    {ai ? "AI" : "Rule"}
+                  </span>
+                </div>
+                <span className="mt-0.5 block text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Stage {String(index + 1).padStart(2, "0")}</span>
               </div>
-              </div>
-            </div>
+              <p className="min-w-0 text-[12px] leading-relaxed text-muted-foreground sm:text-[13px]">{step.summary}</p>
+              <span className="text-right font-mono text-[10px] tabular-nums text-muted-foreground">{duration(step.ms)}</span>
+            </li>
           )
         })}
-      </div>
-
-      <p className="mt-4 text-center text-[11px] text-muted-foreground">
-        Full pass in <span className="font-medium tabular-nums">{(totalMs / 1000).toFixed(1)}s</span> — deterministic
-        gates run first, so AI reasoning is spent only where judgment matters.
-      </p>
+      </ol>
     </div>
   )
 }
