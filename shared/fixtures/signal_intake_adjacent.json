@@ -1,0 +1,47 @@
+{
+  "founder_id": "f004",
+  "company_id": "c004",
+  "deck_claims": [
+    {
+      "field": "team",
+      "value": "CEO: 5 years at AWS, infrastructure engineer",
+      "source_slide": 3
+    },
+    {
+      "field": "problem_product",
+      "value": "Multi-cloud workload orchestration platform. Manages compute resources across AWS, Azure, and GCP with intelligent load balancing.",
+      "source_slide": 2
+    },
+    {
+      "field": "market_size",
+      "value": "$8B multi-cloud infrastructure market",
+      "source_slide": 5
+    },
+    {
+      "field": "traction",
+      "value": "Beta with 15 companies, $1K MRR",
+      "source_slide": 7
+    },
+    {
+      "field": "ask",
+      "value": "$80K pre-seed",
+      "source_slide": 8
+    }
+  ],
+  "public_signals": {
+    "github": {
+      "repos": 12,
+      "commit_consistency_score": 0.8,
+      "longevity_months": 36
+    },
+    "devpost_hn": {
+      "launches": 2,
+      "total_upvotes": 120
+    },
+    "arxiv": {
+      "papers": 0
+    }
+  },
+  "sourcing_channel": "inbound",
+  "cold_start_flag": false
+}

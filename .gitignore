@@ -1,0 +1,18 @@
+# Environment variables — never commit real keys
+.env
+*.env
+backend/**/.env
+
+# Python
+__pycache__/
+*.pyc
+venv/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS junk
+.DS_Store
