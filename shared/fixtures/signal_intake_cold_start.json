@@ -1,0 +1,42 @@
+{
+  "founder_id": "f002",
+  "company_id": "c002",
+  "deck_claims": [
+    {
+      "field": "team",
+      "value": "Recent bootcamp grad, self-taught developer, passionate about climate tech",
+      "source_slide": 4
+    },
+    {
+      "field": "traction",
+      "value": "Beta with 200 users, launched 2 months ago",
+      "source_slide": 6
+    },
+    {
+      "field": "market_size",
+      "value": "$200B climate tech opportunity",
+      "source_slide": 5
+    },
+    {
+      "field": "problem_product",
+      "value": "Carbon footprint tracker for small businesses",
+      "source_slide": 2
+    }
+  ],
+  "public_signals": {
+    "github": {
+      "repos": 3,
+      "commit_consistency_score": 0.4,
+      "longevity_months": 6
+    },
+    "devpost_hn": {
+      "launches": 1,
+      "total_upvotes": 12
+    },
+    "arxiv": {
+      "papers": 0
+    }
+  },
+  "sourcing_channel": "outbound",
+  "cold_start_flag": true
+}
