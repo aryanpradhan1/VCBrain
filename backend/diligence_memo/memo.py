@@ -114,7 +114,17 @@ class MemoSynthesizer:
     def _verdict(validation: ValidationResult, traction: str) -> str:
         if any(item.severity == "high" for item in validation.flagged_claims):
             return "decline"
-        low_trust = sum(item.confidence == "low" for item in validation.claim_trust)
-        if validation.flagged_claims or low_trust or traction == "Not disclosed":
+        # A single low-confidence claim is not a red flag on its own -- a private,
+        # early-stage company's specific financials are routinely absent from public
+        # sources, which is normal, not suspicious (see the contradiction-vs-unverified
+        # distinction in ClaimValidator's prompt). Requiring a majority of claims to be
+        # low-confidence, rather than any single one, keeps "approve" reachable for a
+        # genuinely strong company whose only "issue" is being private/early-stage --
+        # while still routing a company with mostly-unverifiable claims to human review.
+        trust_claims = validation.claim_trust
+        low_trust_share = (
+            sum(item.confidence == "low" for item in trust_claims) / len(trust_claims) if trust_claims else 0
+        )
+        if validation.flagged_claims or low_trust_share > 0.5 or traction == "Not disclosed":
             return "review"
         return "approve"

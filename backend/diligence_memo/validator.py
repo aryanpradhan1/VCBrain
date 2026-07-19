@@ -93,7 +93,7 @@ class ClaimValidator:
                 return self._llm_assess(company_name, claim, evidence)
             except (ExternalServiceError, KeyError, TypeError, ValueError, json.JSONDecodeError):
                 pass
-        return self._conservative_assess(claim, evidence)
+        return self._conservative_assess(company_name, claim, evidence)
 
     def _llm_assess(
         self, company_name: str, claim: DeckClaim, evidence: list[Evidence]
@@ -101,7 +101,41 @@ class ClaimValidator:
         payload = self.reasoning_client.json_completion(
             system=(
                 "You are a skeptical venture diligence analyst. Evaluate only the supplied "
-                "claim and evidence. Never infer facts absent from the evidence. Return JSON with "
+                "claim and evidence, about this specific company and this specific claim -- "
+                "not evidence that merely shares keywords with an unrelated person, company, "
+                "or product. 'Sources exist' is not the same as 'sources confirm': confidence "
+                "must reflect whether the evidence actually corroborates THIS claim about THIS "
+                "company, not how many sources were returned by the search.\n"
+                "- confidence=high only if at least one source explicitly names this company "
+                "(or this claim's specific person/number/fact) and confirms the claim.\n"
+                "- confidence=medium if sources are plausibly on-topic (right industry, "
+                "similar claim) but don't explicitly confirm this company's specific claim.\n"
+                "- confidence=low if the sources are about a different company or person, "
+                "don't mention this claim's specifics, or no usable evidence exists -- even "
+                "if several sources were returned, confidence must be low unless one of them "
+                "actually verifies this exact claim.\n"
+                "contradiction=true is a much stronger bar than confidence=low, and the two are "
+                "not interchangeable: a private, early-stage company's specific financials or "
+                "traction numbers (MRR, user counts, growth rate) will almost always be absent "
+                "from public sources -- that is normal and expected, NOT suspicious, and must be "
+                "confidence=low with contradiction=false. Only set contradiction=true when a "
+                "specific source explicitly states a conflicting fact (e.g. a different concrete "
+                "figure, an explicit denial, a documented dispute) -- never merely because the "
+                "claim's exact number wasn't independently found. 'Unable to verify' and "
+                "'verified to be false' are different outcomes; most early-stage claims are the "
+                "former, not the latter.\n"
+                "Market-size/TAM claims specifically: independent research firms routinely produce "
+                "estimates for the 'same' market that differ by 5-10x or more, because they scope "
+                "the market differently (global vs. regional, adjacent segments bundled in or not, "
+                "different base years) -- this is normal noise in market-sizing methodology, not "
+                "evidence the claim is wrong. If cited sources disagree with EACH OTHER by a wide "
+                "margin, that disagreement is a reason for confidence=low (can't pin down a "
+                "reliable number either way), not contradiction=true. Only flag a market-size claim "
+                "as contradicted if a source specifically measuring the same scope (same "
+                "geography, same market definition) as the claim states a clearly incompatible "
+                "figure -- not merely because it falls outside the range of loosely-related "
+                "third-party estimates.\n"
+                "Never infer facts absent from the evidence. Return JSON with "
                 "confidence (high|medium|low), evidence_summary, contradiction (boolean), "
                 "issue, and severity (low|medium|high)."
             ),
@@ -139,7 +173,7 @@ class ClaimValidator:
 
     @staticmethod
     def _conservative_assess(
-        claim: DeckClaim, evidence: list[Evidence]
+        company_name: str, claim: DeckClaim, evidence: list[Evidence]
     ) -> tuple[FlaggedClaim | None, ClaimTrust]:
         if not evidence:
             return None, ClaimTrust(
@@ -151,7 +185,17 @@ class ClaimValidator:
         combined = " ".join(item.content.lower() for item in evidence)
         contradiction = any(term in combined for term in _NEGATION_TERMS)
         citations = "; ".join(item.citation for item in evidence)
-        relevant_evidence = [item for item in evidence if _evidence_supports_claim(claim, item)]
+        # Claim-field keyword overlap alone (e.g. "google", "engineer") matches evidence
+        # about a completely different, unrelated company or person just as easily as it
+        # matches real corroboration -- also requiring the company's own name to appear
+        # closes that false-positive (found live: a claim about "CEO worked at Google" was
+        # rated high-confidence off a real but unrelated person's LinkedIn profile that
+        # also said "ex-Google software engineer").
+        relevant_evidence = [
+            item
+            for item in evidence
+            if _evidence_supports_claim(claim, item) and _evidence_mentions_company(company_name, item)
+        ]
         independent_hosts = {
             urlparse(item.url).hostname.casefold()
             for item in relevant_evidence
@@ -204,3 +248,18 @@ def _evidence_supports_claim(claim: DeckClaim, evidence: Evidence) -> bool:
         )
     )
     return bool(claim_tokens & evidence_tokens)
+
+
+def _evidence_mentions_company(company_name: str, evidence: Evidence) -> bool:
+    """Require the company's own name to actually appear in the evidence before treating
+    it as relevant corroboration. Claim-field keyword overlap alone (e.g. "google",
+    "engineer") is satisfied just as easily by a source about a different, unrelated
+    company or person -- this closes that gap without needing an LLM call, for the
+    no-reasoning-client fallback path."""
+    name_tokens = {
+        token for token in re.findall(r"[a-z0-9]+", company_name.casefold()) if len(token) >= 3 and token not in _STOP_WORDS
+    }
+    if not name_tokens:
+        return True  # nothing distinctive to check against; don't over-reject on a blank/generic name
+    evidence_text = f"{evidence.title} {evidence.content}".casefold()
+    return any(token in evidence_text for token in name_tokens)

@@ -116,6 +116,26 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(output["diligence"]["flagged_claims"][0]["severity"], "high")
         self.assertEqual(output["trust"]["claim_trust"][0]["confidence"], "low")
 
+    def test_single_unverified_claim_does_not_alone_block_approve(self) -> None:
+        # A private early-stage company's specific traction number routinely has no
+        # public source -- that alone shouldn't cap the verdict at "review" if the rest
+        # of the deck is well-corroborated and nothing is actually contradicted.
+        evidence_by_query_count = {"traction": []}  # no public evidence for the private metric
+
+        class PerFieldSearch:
+            def search(self, query: str, max_results: int = 3) -> list[Evidence]:
+                if "traction" in query:
+                    return []
+                return [Evidence("Acme profile", "https://example.com/acme", f"Acme: {query}")]
+
+        output = DiligenceMemoPipeline(ClaimValidator(PerFieldSearch())).run(
+            {"company_name": "Acme", "sector": "AI", "deck_claims": CLAIMS}
+        )
+        confidences = [item["confidence"] for item in output["trust"]["claim_trust"]]
+        self.assertIn("low", confidences)  # the unverifiable traction claim
+        self.assertEqual(output["diligence"]["flagged_claims"], [])  # never contradicted, just unverified
+        self.assertEqual(output["verdict"], "approve")
+
     def test_no_evidence_stays_low_confidence_without_fabrication(self) -> None:
         output = DiligenceMemoPipeline(ClaimValidator(FakeSearch([]))).run(
             {"company_name": "ColdCo", "deck_claims": CLAIMS[:1]}
@@ -158,6 +178,27 @@ class PipelineTests(unittest.TestCase):
         result = ClaimValidator(FakeSearch(evidence)).validate("Acme", CLAIMS[:1])
         self.assertEqual(result.claim_trust[0].confidence, "medium")
 
+    def test_keyword_overlap_on_a_different_company_does_not_raise_confidence(self) -> None:
+        # Found live: a claim's field/value tokens (e.g. "google", "engineer") can match
+        # evidence that is genuinely about a real source, real person -- just not this
+        # company. Lexical overlap on generic terms shouldn't count as corroboration
+        # unless the evidence actually names the company being diligenced.
+        team_claim = [{"field": "team", "value": "CEO worked as a software engineer at Google", "source_slide": 3}]
+        evidence = [
+            Evidence(
+                "Unrelated exec bio",
+                "https://example.com/other-ceo",
+                "Jane Doe is CEO of Widgets Inc, ex-Google software engineer with 6 years experience",
+            ),
+            Evidence(
+                "Another unrelated bio",
+                "https://another.example/profile",
+                "John Smith, software engineer, formerly at Google, now runs a different startup",
+            ),
+        ]
+        result = ClaimValidator(FakeSearch(evidence)).validate("Acme", team_claim)
+        self.assertEqual(result.claim_trust[0].confidence, "low")
+
     def test_string_false_from_reasoning_falls_back_conservatively(self) -> None:
         reasoning = FakeReasoning(
             {
@@ -169,7 +210,7 @@ class PipelineTests(unittest.TestCase):
         )
         validator = ClaimValidator(
             FakeSearch(
-                [Evidence("One", "https://example.com/source", "Supporting traction evidence")]
+                [Evidence("One", "https://example.com/source", "Acme reports supporting traction evidence")]
             ),
             reasoning,
         )

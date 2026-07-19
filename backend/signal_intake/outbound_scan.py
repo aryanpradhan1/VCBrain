@@ -27,11 +27,22 @@ MODEL = "gpt-5.5-2026-04-23"
 GITHUB_LIMIT = int(os.environ.get("OUTBOUND_GITHUB_LIMIT", 50))
 HN_LIMIT = int(os.environ.get("OUTBOUND_HN_LIMIT", 30))
 ARXIV_LIMIT = int(os.environ.get("OUTBOUND_ARXIV_LIMIT", 30))
+PRODUCT_HUNT_LIMIT = int(os.environ.get("OUTBOUND_PRODUCT_HUNT_LIMIT", 20))
 
 # Internal Activate-gating threshold. NOT part of the published contract shapes -- this
 # score only decides whether to cold-outreach a candidate, it never crosses a module
 # boundary. Scale is 0-50 (see compute_partial_founder_score's docstring).
-ACTIVATION_THRESHOLD = 40
+#
+# Set to 25 (50% of max) as a reasoned demo default, not a validated one -- we don't have
+# real outreach-response data yet to actually tune this against (see the earlier
+# discussion on validating thresholds through the persistent store). 40 (80% of max) was
+# checked against real candidates and proved too conservative for a demo: it requires
+# near-maximum on both Track Record AND Traction simultaneously, which real discovered
+# candidates rarely hit (live-tested examples scored 2.7-19.2 out of 50 with thin/typical
+# signals). 25 still requires genuinely solid combined signal, not just "found via GitHub"
+# noise, while being achievable enough to actually demonstrate the Activate path firing.
+# Revisit once real response-rate data exists to validate against.
+ACTIVATION_THRESHOLD = 25
 
 OUTBOX_PATH = os.path.join(os.path.dirname(__file__), "activation_outbox.jsonl")
 
@@ -99,6 +110,55 @@ def fetch_show_hn(limit: int = HN_LIMIT) -> list[dict]:
             }
         )
     return stories
+
+
+_PRODUCT_HUNT_API = "https://api.producthunt.com/v2/api/graphql"
+_PRODUCT_HUNT_QUERY = """
+query RecentPosts($first: Int!) {
+  posts(first: $first, order: RANKING) {
+    edges { node { id name url votesCount createdAt user { username } } }
+  }
+}
+"""
+
+
+def fetch_product_hunt_recent(limit: int = PRODUCT_HUNT_LIMIT) -> list[dict]:
+    """Official Product Hunt API v2 (GraphQL) -- bounded via `first`, single page, no
+    pagination. Requires PRODUCT_HUNT_API_TOKEN, a new credential not in the original
+    contract's env var list (OPENAI_API_KEY/TAVILY_API_KEY only) -- returns [] rather than
+    raising if it isn't configured, so this degrades gracefully instead of breaking the
+    rest of a scan (same pattern as the email-sending path elsewhere in this module).
+
+    Shaped identically to fetch_show_hn's output (same keys, including reusing the
+    "hn_id" name) so it can feed the exact same devpost_hn aggregation in
+    build_candidate_pool without a second code path -- the locked contract's
+    public_signals only has one "devpost_hn" bucket, not a separate Product Hunt one, so
+    this combines into it rather than adding a new signal category (which would be a
+    contract change). "ph-" prefix on the id avoids collisions with real HN story ids in
+    the same merged list."""
+    token = os.environ.get("PRODUCT_HUNT_API_TOKEN")
+    if not token:
+        return []
+
+    resp = requests.post(
+        _PRODUCT_HUNT_API,
+        json={"query": _PRODUCT_HUNT_QUERY, "variables": {"first": min(limit, 50)}},
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    edges = resp.json().get("data", {}).get("posts", {}).get("edges", [])[:limit]
+    return [
+        {
+            "hn_id": f"ph-{edge['node']['id']}",
+            "title": edge["node"].get("name"),
+            "url": edge["node"].get("url"),
+            "points": edge["node"].get("votesCount", 0),
+            "author": (edge["node"].get("user") or {}).get("username"),
+            "time": edge["node"].get("createdAt"),
+        }
+        for edge in edges
+    ]
 
 
 def fetch_arxiv_recent(category: str = "cs.AI", days: int = 2, limit: int = ARXIV_LIMIT) -> list[dict]:
@@ -682,7 +742,10 @@ def run_outbound_pass(thesis_filter_fn=None) -> list[dict]:
     qualitative check exists to catch. Cost is bounded by dedup + the Thesis filter
     already shrinking the pool, not by a second filter on top."""
     github_repos = fetch_github_trending()
-    hn_posts = fetch_show_hn()
+    # Product Hunt shares the contract's single devpost_hn bucket with Show HN (see
+    # fetch_product_hunt_recent's docstring) -- combined here, not a separate pool.
+    # Returns [] on its own if PRODUCT_HUNT_API_TOKEN isn't configured.
+    hn_posts = fetch_show_hn() + fetch_product_hunt_recent()
     arxiv_papers = fetch_arxiv_recent()
 
     candidates = build_candidate_pool(github_repos, hn_posts, arxiv_papers)

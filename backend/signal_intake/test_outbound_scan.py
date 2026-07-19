@@ -200,6 +200,62 @@ class ClassifyFounderIntentTests(unittest.TestCase):
         self.assertEqual(result["signal_strength"], 0.6)
 
 
+class FetchProductHuntRecentTests(unittest.TestCase):
+    def test_returns_empty_without_token_and_makes_no_request(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("PRODUCT_HUNT_API_TOKEN", None)
+            with patch("requests.post") as mock_post:
+                result = outbound_scan.fetch_product_hunt_recent()
+        self.assertEqual(result, [])
+        mock_post.assert_not_called()
+
+    @patch.dict(os.environ, {"PRODUCT_HUNT_API_TOKEN": "fake-token"})
+    @patch("requests.post")
+    def test_shape_matches_show_hn_for_shared_aggregation(self, mock_post):
+        mock_post.return_value.json.return_value = {
+            "data": {
+                "posts": {
+                    "edges": [
+                        {
+                            "node": {
+                                "id": "123",
+                                "name": "Cool Launch",
+                                "url": "https://producthunt.com/posts/cool-launch",
+                                "votesCount": 88,
+                                "createdAt": "2026-07-19T00:00:00Z",
+                                "user": {"username": "priyar"},
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+        mock_post.return_value.raise_for_status = lambda: None
+        result = outbound_scan.fetch_product_hunt_recent()
+        self.assertEqual(
+            result,
+            [
+                {
+                    "hn_id": "ph-123",
+                    "title": "Cool Launch",
+                    "url": "https://producthunt.com/posts/cool-launch",
+                    "points": 88,
+                    "author": "priyar",
+                    "time": "2026-07-19T00:00:00Z",
+                }
+            ],
+        )
+
+    def test_merges_into_devpost_hn_bucket_alongside_show_hn(self):
+        ph_post = {"hn_id": "ph-1", "title": "x", "url": "y", "points": 40, "author": "priyar", "time": 0}
+        combined = HN_POSTS + [ph_post]
+        candidates = outbound_scan.build_candidate_pool(GITHUB_REPOS, combined, [])
+        candidate = next(c for c in candidates if c["identity"] == "priyar")
+        # HN_POSTS already gives priyar 1 launch/220 points; the PH post adds a second.
+        self.assertEqual(candidate["public_signals"].devpost_hn.launches, 2)
+        self.assertEqual(candidate["public_signals"].devpost_hn.total_upvotes, 260)
+
+
 class SearchFounderIntentTests(unittest.TestCase):
     @patch.dict(os.environ, {"TAVILY_API_KEY": "fake-key"})
     @patch.object(outbound_scan, "TavilyClient")
