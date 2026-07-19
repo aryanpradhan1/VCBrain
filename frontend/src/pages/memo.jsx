@@ -46,13 +46,18 @@ import { cn } from "@/lib/utils"
 function CitationChips({ citations, opp }) {
   const { open } = useSources()
   if (!citations?.length) return null
+  const sourceFor = (citation) => {
+    const page = citation.match(/(?:deck[ _-]?slide|slide)\s*(\d+)/i)?.[1]
+    if (page) return opp.sources?.find((source) => source.type === "deck" && String(source.page) === page)
+    return opp.sources?.find((source) => source.title?.toLowerCase().includes(citation.toLowerCase()))
+  }
   return (
     <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border pt-3">
       {citations.map((c) => (
         <button
           key={c}
           type="button"
-          onClick={() => open({ citation: c, opp })}
+          onClick={() => open({ citation: c, opp, record: sourceFor(c) })}
           className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-full bg-secondary/70 px-2.5 py-1 text-[11px] font-medium text-foreground/70 transition-colors hover:bg-secondary hover:text-foreground"
           title={`Open source: ${c}`}>
           <Quote className="size-3 shrink-0 text-muted-foreground" />
@@ -461,7 +466,7 @@ function NewsList({ news, opp }) {
         <li key={n.title}>
           <button
             type="button"
-            onClick={() => open({ type: "news", title: n.title, newsSource: n.source, date: n.date, opp })}
+            onClick={() => open({ type: "news", title: n.title, newsSource: n.source, date: n.date, opp, record: opp.sources?.find((source) => source.url === n.url) })}
             className="group flex w-full cursor-pointer items-center gap-2 text-left">
             <Newspaper className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate text-[13px] font-medium group-hover:underline">{n.title}</span>
@@ -472,6 +477,22 @@ function NewsList({ news, opp }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+function SourceLedger({ sources, opp }) {
+  const { open } = useSources()
+  if (!sources?.length) return null
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      {sources.map((source, index) => (
+        <button key={`${source.url}-${source.title}-${index}`} type="button" onClick={() => open({ type: source.type, citation: source.title, opp, record: source })} className="flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-slate-50">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-[10px] font-bold uppercase text-muted-foreground">{source.type?.slice(0, 2) || "S"}</span>
+          <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{source.title}</span><span className="block truncate text-[11px] text-muted-foreground">{source.source}{source.page ? ` · slide ${source.page}` : ""}</span></span>
+          <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -625,6 +646,14 @@ export default function Memo() {
                 <TrustList claims={opp.claim_trust} opp={opp} />
               </Section>
             </motion.div>
+
+            {opp.sources?.length > 0 && (
+              <motion.div variants={stagger.item}>
+                <Section icon={FileText} title="Source ledger" sub="Submitted files and bounded public references retained with the analysis">
+                  <SourceLedger sources={opp.sources} opp={opp} />
+                </Section>
+              </motion.div>
+            )}
 
             <motion.div variants={stagger.item}>
               <Section icon={FileText} title="Investment memo" sub="Appendix-1 structure — flagged fields never fabricated">

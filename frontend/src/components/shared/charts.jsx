@@ -13,6 +13,13 @@ const tiers = [
 
 export function MarketChart({ market, className }) {
   if (!market) return null
+  if (![market.tam, market.sam, market.som].every((value) => Number.isFinite(value) && value > 0)) {
+    return (
+      <p className={cn("text-sm leading-relaxed text-foreground/80", className)}>
+        {market.basis ?? "No market-sizing evidence was supplied."}
+      </p>
+    )
+  }
   const { unit = "$B", basis } = market
   const H = 190
   const maxR = 82

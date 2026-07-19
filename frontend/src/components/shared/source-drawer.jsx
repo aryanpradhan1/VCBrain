@@ -136,6 +136,26 @@ function NewsCard({ source }) {
   )
 }
 
+function StructuredSource({ record }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {record.image_url && (
+        <img src={record.image_url} alt="" className="h-36 w-full object-cover" onError={(event) => { event.currentTarget.style.display = "none" }} />
+      )}
+      <div className="p-4">
+        <div className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">{record.source || "Source"}{record.page ? ` · slide ${record.page}` : ""}</div>
+        <div className="mt-1 text-sm font-semibold leading-snug">{record.title}</div>
+        {record.excerpt && <p className="mt-2 text-xs leading-relaxed text-slate-600">{record.excerpt}</p>}
+        {record.url && (
+          <a href={record.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:underline">
+            Open original source <ExternalLink className="size-3" />
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function GenericCard({ citation }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 text-[13px] leading-relaxed shadow-sm">
@@ -192,13 +212,15 @@ export function SourceDrawerProvider({ children }) {
                 </button>
               </div>
 
-              {type === "deck" && <DeckSlide citation={source.citation} opp={source.opp} />}
-              {type === "github" && <GithubCard opp={source.opp} />}
-              {type === "interview" && <InterviewCard citation={source.citation} />}
-              {type === "news" && <NewsCard source={source} />}
-              {(type === "launch" || type === "paper" || type === "person" || type === "generic") && (
-                <GenericCard citation={source.citation} />
-              )}
+              {source.record ? <StructuredSource record={source.record} /> : <>
+                {type === "deck" && <DeckSlide citation={source.citation} opp={source.opp} />}
+                {type === "github" && <GithubCard opp={source.opp} />}
+                {type === "interview" && <InterviewCard citation={source.citation} />}
+                {type === "news" && <NewsCard source={source} />}
+                {(type === "launch" || type === "paper" || type === "person" || type === "generic") && (
+                  <GenericCard citation={source.citation} />
+                )}
+              </>}
             </motion.aside>
           </>
         )}

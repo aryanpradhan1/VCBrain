@@ -46,3 +46,15 @@ export async function postDecision(id, decision) {
   await delay(450)
   return { decision }
 }
+
+export async function submitApplication(formData) {
+  if (BASE) return real("/applications", { method: "POST", body: formData })
+  await delay(800)
+  return { company_id: "demo-submission", founder_id: "f-002", status: "queued", status_url: "/applications/demo-submission" }
+}
+
+export async function getApplicationStatus(id) {
+  if (BASE) return real(`/applications/${id}`)
+  await delay(600)
+  return { company_id: id, founder_id: "f-002", company_name: "Demo company", status: "ready", opportunity_url: "/opportunities/c-002" }
+}
