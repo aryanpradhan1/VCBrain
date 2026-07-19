@@ -39,7 +39,7 @@ import { SignalChips } from "@/components/shared/signal-chips"
 import { useSources } from "@/components/shared/source-drawer"
 import { ErrorBanner } from "@/components/shared/states"
 import { TrendArrow } from "@/components/shared/trend"
-import { getOpportunity } from "@/lib/api"
+import { assetUrl, getOpportunity } from "@/lib/api"
 import { useAsync } from "@/lib/use-async"
 import { cn } from "@/lib/utils"
 
@@ -244,7 +244,7 @@ function FounderCard({ founder }) {
   return (
     <div className="flex gap-4 rounded-xl border border-border bg-card p-4">
       {founder.avatar ? (
-        <img src={founder.avatar} alt={founder.name} loading="lazy" className="size-16 shrink-0 rounded-xl object-cover shadow-sm" />
+        <img src={assetUrl(founder.avatar)} alt={founder.name} loading="lazy" className="size-16 shrink-0 rounded-xl object-cover shadow-sm" />
       ) : (
         <span className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-xl font-semibold text-white shadow-sm">{founder.name?.[0] || "F"}</span>
       )}

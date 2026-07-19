@@ -6,6 +6,14 @@ import { opportunities, founderResults } from "@/fixtures/opportunities"
 
 const BASE = import.meta.env.VITE_API_URL
 
+// API records intentionally store relative media paths so they remain portable
+// between local development and deployment. Browser components must resolve
+// those paths against FastAPI rather than the Vite host.
+export function assetUrl(path) {
+  if (!path || /^(https?:|data:|blob:)/i.test(path)) return path
+  return BASE ? `${BASE}${path}` : path
+}
+
 const delay = (ms) => new Promise((r) => setTimeout(r, ms))
 
 async function real(path, options) {

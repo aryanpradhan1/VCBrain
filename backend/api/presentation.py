@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 
 _PROJECTED = re.compile(r"\b(plan|planned|project|target|estimate|recommend|will|future|roadmap)\w*\b", re.I)
@@ -59,7 +60,40 @@ def relevant_sources(company_name: str, sources: list[dict[str, Any]], website: 
         haystack = f"{source.get('title', '')} {source.get('excerpt', '')} {source.get('url', '')}".casefold()
         if company in haystack or (domain and domain in haystack):
             filtered.append(source)
-    return filtered
+    # The same profile can arrive twice: once as a founder-supplied URL and
+    # once as richer fetched metadata. Likewise, App Store search often emits
+    # identical country-localized pages. Preserve the more useful record and
+    # keep the ledger intentionally small.
+    selected: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for source in filtered:
+        if source.get("type") == "deck":
+            key = f"deck:{source.get('page')}"
+        else:
+            key = _canonical_source_key(str(source.get("url") or ""))
+        if key not in selected:
+            selected[key] = source
+            order.append(key)
+            continue
+        if _source_richness(source) > _source_richness(selected[key]):
+            selected[key] = source
+    return [selected[key] for key in order]
+
+
+def _canonical_source_key(url: str) -> str:
+    parsed = urlparse(url)
+    host = parsed.netloc.casefold()
+    path = parsed.path.rstrip("/").casefold()
+    # Apple serves the same listing as both `/app/name/id123` and
+    # `/app/123`; normalize either locale-specific form to the numeric app id.
+    app_store_id = re.search(r"/(?:id)?(\d+)$", path)
+    if host.endswith("apps.apple.com") and app_store_id:
+        return f"apps.apple.com/id{app_store_id.group(1)}"
+    return urlunparse((parsed.scheme.casefold(), host, path, "", "", "")) or url.casefold()
+
+
+def _source_richness(source: dict[str, Any]) -> int:
+    return int(bool(source.get("excerpt"))) * 3 + int(bool(source.get("image_url"))) * 2 + int(source.get("source") != "Founder-submitted")
 
 
 def concise_memo(
@@ -142,7 +176,13 @@ def _team_members(profile: dict[str, Any], claims: list[dict[str, Any]], sources
     entries = re.findall(r"([^,:]+?)\s*\(([^)]+)\)", team_text)
     if not entries:
         entries = [(profile.get("founder_name") or "Founder", profile.get("founder_role") or "Founder")]
-    avatar = next((source.get("image_url") for source in sources if source.get("type") == "github" and source.get("image_url")), profile.get("photo_url"))
+    # A submitted headshot is the reliable profile image. Do not imply a
+    # GitHub avatar came from LinkedIn: LinkedIn does not permit dependable
+    # profile-photo retrieval by this backend. GitHub is used only when no
+    # LinkedIn identity was supplied.
+    avatar = profile.get("photo_url")
+    if not avatar and not profile.get("linkedin"):
+        avatar = next((source.get("image_url") for source in sources if source.get("type") == "github" and source.get("image_url")), None)
     members = []
     for index, (name, role) in enumerate(entries):
         cleaned_name = re.sub(r"^Team:\s*", "", name).strip()

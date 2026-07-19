@@ -169,6 +169,10 @@ class OpportunityResponse(BaseModel):
     documents: list[DocumentRecord] = Field(default_factory=list)
     processing_trace: list[dict[str, Any]] = Field(default_factory=list)
     status: str = "ready"
+    # Signal Intake owns this contract payload; forwarding it prevents the
+    # frontend from rendering a different (and empty) GitHub summary than the
+    # scorer used.
+    public_signals: dict[str, Any] = Field(default_factory=dict)
 
 
 class FounderResultsResponse(BaseModel):
@@ -436,6 +440,7 @@ def _assemble_opportunity(company_id: str) -> OpportunityResponse:
         amount_recommended=diligence_memo["amount_recommended"] if verdict == "approve" else 0,
         thesis=analysis["thesis"], enrichment=enrichment, sources=sources,
         documents=documents, processing_trace=record.get("trace", []), status=record["status"],
+        public_signals=signal.get("public_signals", {}),
     )
 
 
@@ -638,6 +643,27 @@ def _process_application(company_id: str) -> None:
         if site_source:
             sources.append(site_source)
         sources.extend(search_press(record["company_name"], record["profile"].get("website")))
+        # A company site is commonly mentioned on the company LinkedIn result
+        # rather than typed into the form. Promote only the company-matching
+        # domain discovered by the bounded source scan, then retain its own
+        # metadata as an auditable source for the investor view.
+        discovered_website = build_enrichment(record["profile"], signal, sources, traces).get("website")
+        if discovered_website and not record["profile"].get("website"):
+            profile = {**record["profile"], "website": discovered_website}
+            discovered_site_source = fetch_site_metadata(discovered_website)
+            if discovered_site_source:
+                sources.append(discovered_site_source)
+            store.upsert_application(
+                company_id=company_id,
+                founder_id=record["founder_id"],
+                company_name=record["company_name"],
+                status="processing",
+                profile=profile,
+                documents=extracted,
+                sources=sources,
+                signal=signal,
+                trace=traces,
+            )
         sources.extend({
             "type": "deck", "title": item["title"], "url": document["file_url"], "excerpt": item.get("text", ""),
             "source": "Founder-uploaded document", "page": item.get("page"), "preview_url": item.get("preview_url"),
