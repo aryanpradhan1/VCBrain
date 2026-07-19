@@ -19,7 +19,7 @@ import requests
 from openai import OpenAI
 from tavily import TavilyClient
 
-from .schemas import ArxivSignals, DevpostHnSignals, GithubSignals, PublicSignals
+from .schemas import ArxivSignals, DevpostHnSignals, GithubSignals, PublicSignals, SignalIntakeOutput
 
 MODEL = "gpt-5.5-2026-04-23"
 
@@ -278,6 +278,30 @@ def build_candidate_pool(github_repos: list[dict], hn_posts: list[dict], arxiv_p
         )
         candidates.append({"identity": identity, "sources": sorted(sources), "public_signals": public_signals})
     return candidates
+
+
+def assemble_outbound_signal_intake_output(candidate: dict) -> SignalIntakeOutput:
+    """Wraps an outbound candidate into the real SignalIntakeOutput contract shape --
+    unified with deck_parser.assemble_signal_intake_output's inbound path, instead of
+    outbound candidates living in a separate ad-hoc dict shape indefinitely.
+
+    company_id uses a clearly-documented placeholder convention: f"pending_{identity}".
+    company_id is required and non-optional in the locked contract, and no company is
+    known yet pre-conversion (this is a person, not a company, until they respond) -- so
+    *something* honest has to go there. "pending_" makes it unambiguous to any downstream
+    reader that this isn't a real company_id, and keeping the identity in it keeps each
+    placeholder unique (no collisions in Memory/founders-table keying). Once a candidate
+    converts (applies with a deck, names their company), whatever assembles the real
+    opportunity record should replace this with a real company_id -- that promotion step
+    doesn't live here."""
+    return SignalIntakeOutput(
+        founder_id=candidate["identity"],
+        company_id=f"pending_{candidate['identity']}",
+        deck_claims=[],
+        public_signals=candidate["public_signals"],
+        sourcing_channel="outbound",
+        cold_start_flag=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -564,34 +588,41 @@ def _send_via_smtp(email: dict) -> dict:
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def _record_candidate_in_memory(candidate: dict) -> None:
-    """Persist outbound-sourced signals via B's shared Memory layer (backend/api/db.py).
-    Uses the discovered identity as a provisional founder_id -- outbound candidates don't
-    have a real founder_id/company_id yet (see the SignalIntakeOutput company_id gap
-    flagged at Sync 1), but Memory is meant to accumulate evidence from minute one, before
-    conversion, per the contract's Memory layer description ("structured knowledge base
-    ... timestamped, deduplicated, source-tagged, persistent").
+def _record_signal_intake_in_memory(output: SignalIntakeOutput) -> None:
+    """Persist via B's shared Memory layer (backend/api/db.py) -- unified with
+    deck_parser.record_deck_claims_in_memory: both the inbound and outbound paths now
+    persist through the same SignalIntakeOutput shape instead of two different
+    representations. Memory accumulates evidence from minute one, before conversion, per
+    the contract's Memory layer description ("structured knowledge base ... timestamped,
+    deduplicated, source-tagged, persistent") -- outbound candidates don't wait until they
+    have a real company_id to start being recorded.
 
     Lazy-imported, same reasoning as deck_parser.record_deck_claims_in_memory: keeps this
     module importable and its own tests runnable whether or not db.py exists yet on the
     branch being run."""
     from backend.api.db import recompute_founder_score, save_signal
 
-    founder_id = candidate["identity"]
-    signals = candidate["public_signals"].model_dump()
-    for source in ("github", "devpost_hn", "arxiv"):
-        if source in candidate["sources"]:
-            save_signal(founder_id, source, signals[source])
-    recompute_founder_score(founder_id)
+    signals = output.public_signals
+    if signals.github.repos:
+        save_signal(output.founder_id, "github", signals.github.model_dump())
+    if signals.devpost_hn.launches:
+        save_signal(output.founder_id, "devpost_hn", signals.devpost_hn.model_dump())
+    if signals.arxiv.papers:
+        save_signal(output.founder_id, "arxiv", signals.arxiv.model_dump())
+    recompute_founder_score(output.founder_id)
 
 
 def run_outbound_pass(thesis_filter_fn=None) -> list[dict]:
-    """End-to-end scaffold: fetch (bounded) -> dedup/tag -> Thesis filter -> qualitative
-    founder-intent search + partial score -> Activate above threshold -> draft +
-    (dry-run) send. Returns one summary dict per candidate in the post-filter pool. Every
-    post-filter candidate is written to Memory (see _record_candidate_in_memory)
-    regardless of whether they're activated -- the filtered pool is the evidence worth
-    keeping, Activate is a separate downstream decision on top of it.
+    """End-to-end scaffold: fetch (bounded) -> dedup/tag -> Thesis filter -> assemble the
+    real SignalIntakeOutput -> qualitative founder-intent search + partial score ->
+    Activate above threshold -> draft + (dry-run) send. Returns one summary dict per
+    candidate in the post-filter pool, each carrying its unified "signal_intake_output"
+    (see assemble_outbound_signal_intake_output) -- outbound candidates are no longer a
+    separate ad-hoc shape from the inbound deck path, both produce the same contract
+    object. Every post-filter candidate is written to Memory (see
+    _record_signal_intake_in_memory) regardless of whether they're activated -- the
+    filtered pool is the evidence worth keeping, Activate is a separate downstream
+    decision on top of it.
 
     The qualitative Tavily search runs for every candidate that survives dedup + the
     Thesis filter -- gated on pool membership, not on structural score, since gating on
@@ -607,7 +638,8 @@ def run_outbound_pass(thesis_filter_fn=None) -> list[dict]:
 
     results = []
     for candidate in candidates:
-        _record_candidate_in_memory(candidate)
+        signal_output = assemble_outbound_signal_intake_output(candidate)
+        _record_signal_intake_in_memory(signal_output)
         qualitative_signal = search_founder_intent(candidate["identity"])
         partial_score = compute_partial_founder_score(candidate["public_signals"], qualitative_signal)
         activated = should_activate(partial_score)
@@ -630,9 +662,8 @@ def run_outbound_pass(thesis_filter_fn=None) -> list[dict]:
 
         results.append(
             {
-                "identity": candidate["identity"],
+                "signal_intake_output": signal_output,
                 "sources": candidate["sources"],
-                "public_signals": candidate["public_signals"],
                 "qualitative_signal": qualitative_signal,
                 "partial_score": partial_score,
                 "activated": activated,
@@ -644,4 +675,4 @@ def run_outbound_pass(thesis_filter_fn=None) -> list[dict]:
 
 if __name__ == "__main__":
     for result in run_outbound_pass():
-        print(json.dumps({**result, "public_signals": result["public_signals"].model_dump()}, indent=2))
+        print(json.dumps({**result, "signal_intake_output": result["signal_intake_output"].model_dump()}, indent=2))

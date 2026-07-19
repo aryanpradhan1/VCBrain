@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from . import outbound_scan
-from .schemas import PublicSignals
+from .schemas import PublicSignals, SignalIntakeOutput
 
 GITHUB_REPOS = [
     {
@@ -366,7 +366,7 @@ class RunOutboundPassTests(unittest.TestCase):
         "_real_thesis_filter",
         return_value={"thesis_match": True, "match_type": "exact", "rationale": "test"},
     )
-    @patch.object(outbound_scan, "_record_candidate_in_memory")
+    @patch.object(outbound_scan, "_record_signal_intake_in_memory")
     @patch.object(outbound_scan, "resolve_contact_email", return_value={"channel": "none", "value": None, "source": None})
     @patch.object(outbound_scan, "fetch_arxiv_recent", return_value=ARXIV_PAPERS)
     @patch.object(outbound_scan, "fetch_show_hn", return_value=HN_POSTS)
@@ -375,7 +375,11 @@ class RunOutboundPassTests(unittest.TestCase):
         results = outbound_scan.run_outbound_pass()
         self.assertEqual(len(results), 1)
         result = results[0]
-        self.assertEqual(result["identity"], "priyar")
+        signal_output = result["signal_intake_output"]
+        self.assertEqual(signal_output.founder_id, "priyar")
+        self.assertEqual(signal_output.company_id, "pending_priyar")
+        self.assertEqual(signal_output.sourcing_channel, "outbound")
+        self.assertTrue(signal_output.cold_start_flag)
         if result["activated"]:
             self.assertEqual(result["outreach"]["status"], "no_public_contact_found")
 
@@ -387,7 +391,28 @@ class RunOutboundPassTests(unittest.TestCase):
         self.assertEqual(results, [])
 
 
-class RecordCandidateInMemoryTests(unittest.TestCase):
+class AssembleOutboundSignalIntakeOutputTests(unittest.TestCase):
+    def test_wraps_candidate_into_real_contract_shape(self):
+        candidate = {
+            "identity": "priyar",
+            "sources": ["github", "devpost_hn"],
+            "public_signals": PublicSignals(
+                github={"repos": 3, "commit_consistency_score": 0.5, "longevity_months": 12},
+                devpost_hn={"launches": 1, "total_upvotes": 220},
+            ),
+        }
+        output = outbound_scan.assemble_outbound_signal_intake_output(candidate)
+
+        self.assertIsInstance(output, SignalIntakeOutput)
+        self.assertEqual(output.founder_id, "priyar")
+        self.assertEqual(output.company_id, "pending_priyar")  # documented placeholder, not fabricated data
+        self.assertEqual(output.deck_claims, [])
+        self.assertEqual(output.sourcing_channel, "outbound")
+        self.assertTrue(output.cold_start_flag)
+        self.assertEqual(output.public_signals.github.repos, 3)
+
+
+class RecordSignalIntakeInMemoryTests(unittest.TestCase):
     def test_saves_one_signal_per_contributing_source_and_recomputes(self):
         candidate = {
             "identity": "priyar",
@@ -397,9 +422,11 @@ class RecordCandidateInMemoryTests(unittest.TestCase):
                 devpost_hn={"launches": 1, "total_upvotes": 220},
             ),
         }
+        output = outbound_scan.assemble_outbound_signal_intake_output(candidate)
+
         fake_db = MagicMock()
         with patch.dict(sys.modules, {"backend.api.db": fake_db}):
-            outbound_scan._record_candidate_in_memory(candidate)
+            outbound_scan._record_signal_intake_in_memory(output)
 
         self.assertEqual(fake_db.save_signal.call_count, 2)
         fake_db.save_signal.assert_any_call(
