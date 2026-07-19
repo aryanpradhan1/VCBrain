@@ -263,6 +263,89 @@
     break-inside: avoid;
   }
 
+  .memo-export-visuals {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5mm;
+    margin-bottom: 6mm;
+    padding: 4mm;
+    border: 1px solid #cbd5e1;
+    border-radius: 3mm;
+    break-inside: avoid;
+  }
+
+  .memo-export-visuals h2 {
+    display: flex;
+    justify-content: space-between;
+    margin: 0 0 3mm;
+    font-size: 9pt;
+  }
+
+  .memo-export-visuals h2 small,
+  .memo-export-axis small {
+    color: #64748b;
+    font-size: 7pt;
+    font-weight: 500;
+  }
+
+  .memo-export-axis {
+    display: grid;
+    grid-template-columns: 26mm 1fr 18mm;
+    align-items: center;
+    gap: 2mm;
+    margin-top: 2mm;
+    font-size: 7.5pt;
+  }
+
+  .memo-export-axis > span small {
+    display: block;
+  }
+
+  .memo-export-axis i {
+    height: 2mm;
+    overflow: hidden;
+    border-radius: 2mm;
+    background: #e2e8f0;
+  }
+
+  .memo-export-axis i b {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #6366f1;
+  }
+
+  .memo-export-axis > strong {
+    text-align: right;
+    text-transform: capitalize;
+  }
+
+  .memo-export-trust-bar {
+    display: flex;
+    height: 4mm;
+    overflow: hidden;
+    border-radius: 2mm;
+    background: #e2e8f0;
+  }
+
+  .memo-export-trust-bar span:nth-child(1) { background: #10b981; }
+  .memo-export-trust-bar span:nth-child(2) { background: #f59e0b; }
+  .memo-export-trust-bar span:nth-child(3) { background: #f87171; }
+
+  .memo-export-trust-legend {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 2mm;
+    font-size: 7pt;
+    color: #64748b;
+  }
+
+  .memo-export-visuals p {
+    margin-top: 2.5mm;
+    color: #64748b;
+    font-size: 7pt;
+  }
+
   .memo-export-section h2 {
     margin: 0 0 1.5mm;
     color: #0f172a;

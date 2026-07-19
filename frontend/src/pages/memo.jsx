@@ -11,6 +11,7 @@ import {
   FileText,
   Flag,
   GitBranch,
+  Gauge,
   Lightbulb,
   MapPin,
   Newspaper,
@@ -29,7 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AgentPipeline } from "@/components/shared/agent-pipeline"
-import { MarketChart, ScoreFormulaBar } from "@/components/shared/charts"
+import { DecisionLandscape, EvidenceCoverageChart, MarketChart, ScoreFormulaBar } from "@/components/shared/charts"
 import { ChannelBadge, ColdStartBadge, RatingPill } from "@/components/shared/chips"
 import { DecisionBar } from "@/components/shared/decision-bar"
 import { Page, stagger } from "@/components/shared/page"
@@ -542,6 +543,7 @@ function AppendixMemo({ opp }) {
   return (
     <article className="memo-export-only">
       <div className="memo-export-decision"><span>Recommendation</span><strong>{verdictMeta[opp.verdict].label}</strong><span>Founder Score</span><strong>{opp.founder_score.value} ± {opp.founder_score.confidence_interval}</strong></div>
+      <AppendixVisualSummary opp={opp} />
       <section className="memo-export-section"><h2>01 · Company snapshot</h2><p>{required.company_snapshot}</p></section>
       <section className="memo-export-section"><h2>02 · Investment hypotheses</h2><ol>{required.investment_hypotheses.map((item) => <li key={item}>{item}</li>)}</ol></section>
       <section className="memo-export-section"><h2>03 · SWOT</h2><div className="memo-export-swot">{Object.entries(required.swot || {}).map(([key, values]) => <div key={key}><h3>{key}</h3><ul>{(values || []).map((value) => <li key={value}>{value}</li>)}</ul></div>)}</div></section>
@@ -549,6 +551,17 @@ function AppendixMemo({ opp }) {
       <section className="memo-export-section"><h2>Evidence index</h2><ol>{(opp.sources || []).slice(0, 20).map((source, index) => <li key={`${source.url}-${index}`}><strong>[{index + 1}] {source.title}</strong><span>{source.url}</span></li>)}</ol></section>
     </article>
   )
+}
+
+function AppendixVisualSummary({ opp }) {
+  const trust = (opp.claim_trust || []).reduce((counts, claim) => ({ ...counts, [claim.confidence]: (counts[claim.confidence] || 0) + 1 }), { high: 0, medium: 0, low: 0 })
+  const total = Math.max(opp.claim_trust?.length || 0, 1)
+  const axes = [
+    ["Founder", `${opp.founder_axis.score} / 100`, opp.founder_axis.score, opp.founder_axis.trend],
+    ["Market", opp.market_axis.rating, ({ bear: 14, neutral: 50, bullish: 86 }[opp.market_axis.rating] ?? 50), opp.market_axis.trend],
+    ["Idea vs Market", opp.idea_vs_market_axis.rating, ({ bear: 14, neutral: 50, bullish: 86 }[opp.idea_vs_market_axis.rating] ?? 50), opp.idea_vs_market_axis.trend],
+  ]
+  return <section className="memo-export-visuals"><div><h2>Decision landscape <small>never averaged</small></h2>{axes.map(([label, display, percent, trend]) => <div key={label} className="memo-export-axis"><span>{label}<small>{trend}</small></span><i><b style={{ width: `${percent}%` }}/></i><strong>{display}</strong></div>)}</div><div><h2>Per-claim trust <small>{opp.claim_trust?.length || 0} checked</small></h2><div className="memo-export-trust-bar"><span style={{ width: `${(trust.high / total) * 100}%` }}/><span style={{ width: `${(trust.medium / total) * 100}%` }}/><span style={{ width: `${(trust.low / total) * 100}%` }}/></div><div className="memo-export-trust-legend"><span>High <strong>{trust.high}</strong></span><span>Medium <strong>{trust.medium}</strong></span><span>Low <strong>{trust.low}</strong></span></div><p>{new Set((opp.sources || []).map((source) => source.url).filter(Boolean)).size} unique evidence links retained.</p></div></section>
 }
 
 function AdversarialPanel({ challenges }) {
@@ -767,6 +780,15 @@ export default function Memo() {
                 sub="Three independent axes — never averaged into one number"
                 right={<Badge variant={verdictMeta[opp.verdict].variant}>Recommendation: {verdictMeta[opp.verdict].label}</Badge>}>
                 <AxisCards opp={opp} />
+              </Section>
+            </motion.div>
+
+            <motion.div id="decision-dashboard" variants={stagger.item}>
+              <Section icon={Gauge} title="Decision dashboard" sub="Conviction and evidence coverage at a glance">
+                <div className="grid gap-3 xl:grid-cols-2">
+                  <DecisionLandscape opportunity={opp} />
+                  <EvidenceCoverageChart claims={opp.claim_trust} sources={opp.sources} />
+                </div>
               </Section>
             </motion.div>
 

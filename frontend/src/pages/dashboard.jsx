@@ -166,14 +166,14 @@ export default function Dashboard() {
   const [smartQuery, setSmartQuery] = useState("")
   const { data, error, loading, retry } = useAsync(() => listOpportunities(smartQuery), [smartQuery])
   const [verdict, setVerdict] = useState("all")
-  const [searchParams] = useSearchParams()
-  const sourcingOnly = searchParams.get("channel") === "outbound"
+  const [searchParams, setSearchParams] = useSearchParams()
+  const channel = ["inbound", "outbound"].includes(searchParams.get("channel")) ? searchParams.get("channel") : "all"
 
   const filtered = useMemo(() => {
     if (!data) return []
     const q = query.trim().toLowerCase()
     return data.filter((o) => {
-      if (sourcingOnly && o.sourcing_channel !== "outbound") return false
+      if (channel !== "all" && o.sourcing_channel !== channel) return false
       if (verdict !== "all" && o.verdict !== verdict) return false
       if (!q) return true
       if (smartQuery.trim() === query.trim()) return true
@@ -182,7 +182,7 @@ export default function Dashboard() {
         .toLowerCase()
         .includes(q)
     })
-  }, [data, query, smartQuery, verdict, sourcingOnly])
+  }, [data, query, smartQuery, verdict, channel])
 
   const stats = useMemo(() => {
     if (!data) return null
@@ -198,12 +198,10 @@ export default function Dashboard() {
         <div>
           <div className="mb-2 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">Investment workspace</div>
           <h1 className="text-[28px] font-semibold tracking-[-0.035em]">
-            {sourcingOnly ? "Sourcing radar" : "Pipeline"}
+            Pipeline
           </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            {sourcingOnly
-              ? "Founders we found before they applied — activated above the score threshold."
-              : "Ranked by Founder Score — inbound and sourced, one funnel."}
+            Ranked by Founder Score — inbound and sourced, one funnel.
           </p>
         </div>
         <div className="relative w-full sm:w-72">
@@ -232,7 +230,13 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="flex rounded-lg border border-border bg-card p-0.5">
+          {["all", "inbound", "outbound"].map((value) => (
+            <button key={value} type="button" onClick={() => { const next = new URLSearchParams(searchParams); if (value === "all") next.delete("channel"); else next.set("channel", value); setSearchParams(next) }} className={cn("rounded-md px-3 py-1.5 text-xs font-medium capitalize", channel === value ? "bg-slate-950 text-white" : "text-muted-foreground hover:text-foreground")}>{value}</button>
+          ))}
+        </div>
+        <span className="h-5 w-px bg-border" />
         {verdictFilters.map((v) => (
           <button
             key={v}
@@ -247,11 +251,6 @@ export default function Dashboard() {
             {v}
           </button>
         ))}
-        {sourcingOnly && (
-          <Link to="/" className="ml-1 text-xs font-medium text-muted-foreground underline underline-offset-2 hover:text-foreground">
-            clear sourcing filter
-          </Link>
-        )}
       </div>
 
       {error && <ErrorBanner message="Couldn't load the pipeline. The backend may still be waking up." onRetry={retry} />}

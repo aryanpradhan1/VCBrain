@@ -17,7 +17,7 @@ import { opportunities } from "@/fixtures/opportunities"
 
 const investorNav = [
   { to: "/", label: "Pipeline", icon: Inbox, end: true, count: opportunities.length },
-  { to: "/?channel=outbound", label: "Sourcing radar", icon: Radar, end: false },
+  { to: "/outbound", label: "Sourcing radar", icon: Radar },
   { to: "/network", label: "Network intelligence", icon: Network },
   { to: "/thesis", label: "Thesis Engine", icon: Crosshair },
 ]
