@@ -1,3 +1,5 @@
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-pydantic>=2.0.0
+# Superseded -- install from the repo's one complete list instead:
+#   pip install -r ../requirements.txt
+# (from backend/api/) or -r backend/requirements.txt from the repo root. This file is a
+# strict subset of it and installing it alone will miss deps other modules main.py
+# imports (openai, tavily-python, pypdf, etc.).

@@ -7,9 +7,15 @@ Two-stage filter:
 """
 
 import os
+from pathlib import Path
 from typing import Dict, List, Any, Literal
+from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel
+
+# See multi_axis_scorer.py's identical comment -- this module also reads OPENAI_API_KEY
+# at import time and needs backend/.env loaded regardless of entry point.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 # Type definitions matching the contract

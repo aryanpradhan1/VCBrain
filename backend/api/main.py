@@ -1,4 +1,4 @@
-"""FounderScore API: persistent applications around the locked agent contracts."""
+"""Scout API: persistent applications around the locked agent contracts."""
 from __future__ import annotations
 
 import json
@@ -9,6 +9,15 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+# Must run before any `from backend.X import Y` below: backend.scoring's
+# multi_axis_scorer.py and thesis_engine.py read OPENAI_API_KEY at module import time
+# (not inside a function), so the env file has to be loaded first or those imports fail
+# outright with "Missing credentials" -- backend/.env.example documents every var this
+# reads. Silent no-op if backend/.env doesn't exist (e.g. a fresh clone before setup).
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,7 +57,7 @@ MAX_TEAM_MEMBERS = 8
 for directory in (UPLOAD_ROOT, MEDIA_ROOT):
     directory.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="FounderScore API", description="Investor-grade founder diligence", version="1.1.0")
+app = FastAPI(title="Scout API", description="Investor-grade founder diligence", version="1.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -463,8 +472,8 @@ def _public_reference_record(reference: dict[str, Any]) -> dict[str, Any]:
         {"field": "team", "value": "; ".join(f"{f['name']} ({f['role']})" for f in founders) + f". {batch}.", "source_slide": 1, "source_label": "Official YC profile"},
         {"field": "problem_product", "value": reference["solution"], "source_slide": 2, "source_label": "Official YC profile"},
         {"field": "market_size", "value": f"TAM {market['tam']}. {market['basis']}", "source_slide": 3, "source_label": "External market benchmark"},
-        {"field": "market_size", "value": f"SAM {market['sam']}. {market['basis']}", "source_slide": 4, "source_label": "FounderScore assumption model"},
-        {"field": "market_size", "value": f"SOM {market['som']}. {market['basis']}", "source_slide": 5, "source_label": "FounderScore assumption model"},
+        {"field": "market_size", "value": f"SAM {market['sam']}. {market['basis']}", "source_slide": 4, "source_label": "Scout assumption model"},
+        {"field": "market_size", "value": f"SOM {market['som']}. {market['basis']}", "source_slide": 5, "source_label": "Scout assumption model"},
         {"field": "traction", "value": reference["traction"], "source_slide": 6, "source_label": "Official YC profile"},
     ]
     signal = {
@@ -493,7 +502,7 @@ def _public_reference_record(reference: dict[str, Any]) -> dict[str, Any]:
         },
         {
             "type": "market_research", "title": f"market_model · {reference['sector']}",
-            "url": market["url"], "excerpt": market["basis"], "source": "External benchmark + FounderScore assumptions",
+            "url": market["url"], "excerpt": market["basis"], "source": "External benchmark + Scout assumptions",
             "page": 3, "retrieved_at": "2026-07-18T00:00:00+00:00",
         },
     ]
@@ -532,7 +541,7 @@ def _public_reference_record(reference: dict[str, Any]) -> dict[str, Any]:
             "trust": {"claim_trust": [
                 {"claim": "team", "confidence": "high", "evidence": "Names, roles, portraits, and disclosed backgrounds are mapped from the official YC company profile."},
                 {"claim": "problem_product", "confidence": "high", "evidence": "Product scope is mapped from the official YC and company profiles."},
-                {"claim": "market_size", "confidence": "medium", "evidence": "TAM has an external benchmark; SAM and SOM are explicitly identified as FounderScore assumptions."},
+                {"claim": "market_size", "confidence": "medium", "evidence": "TAM has an external benchmark; SAM and SOM are explicitly identified as Scout assumptions."},
                 {"claim": "traction", "confidence": "medium", "evidence": "Accelerator-reported evidence is retained, but customer and revenue metrics are not independently audited here."},
             ]},
             "memo": {
@@ -650,7 +659,7 @@ async def startup_event() -> None:
 
 @app.get("/health")
 def health_check() -> dict[str, str]:
-    return {"status": "ok", "service": "FounderScore API"}
+    return {"status": "ok", "service": "Scout API"}
 
 
 @app.get("/thesis", response_model=ThesisConfig)
@@ -795,7 +804,7 @@ def _recompute_after_interview(record: dict[str, Any], interview_result: dict[st
         "title": "Adaptive founder interview",
         "url": f"/founders/{record['founder_id']}/results",
         "excerpt": "Completed interview was scored by response pattern and used to recompute the persistent Founder Score.",
-        "source": "FounderScore Interview Agent",
+        "source": "Scout Interview Agent",
         "page": None,
         "retrieved_at": None,
     })

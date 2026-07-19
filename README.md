@@ -2,50 +2,47 @@
 
 > AI-powered VC decision system that evaluates startup founders in 24 hours
 
-Scout is an autonomous investment decision platform that combines multi-axis scoring, thesis matching, claim validation, and adaptive interviewing to recommend $100K checks to early-stage startups.
+Scout combines multi-axis scoring, thesis matching, claim validation, and adaptive interviewing to recommend $100K checks to early-stage startups — whether they applied directly or were found before they started fundraising.
 
-## 🎯 Overview
+## Overview
 
-Traditional VC evaluation takes weeks and relies heavily on manual review. FounderScore automates the entire diligence process using AI agents while maintaining rigorous evaluation standards:
+Scout automates the diligence process using AI agents while keeping every claim traceable to real evidence:
 
-- **Multi-Axis Scoring**: Independent evaluation of Founder, Market, and Idea-vs-Market fit (never averaged)
-- **Thesis Engine**: Two-stage filtering (deterministic + LLM) against investment criteria
-- **Auto-Discovery**: Tavily-powered LinkedIn/GitHub profile discovery for team members
-- **Claim Validation**: Bounded public evidence checks using Tavily search
-- **Adaptive Interview**: 5-question session that assesses founder resilience and updates scores
-- **Memory Layer**: EMA-based scoring that tracks founder evolution across signals
+- **Multi-Axis Scoring**: Independent evaluation of Founder, Market, and Idea-vs-Market fit (never averaged into one number)
+- **Thesis Engine**: Two-stage filtering (deterministic gate + LLM judgment) against fund investment criteria
+- **Outbound Sourcing**: Bounded scanning of GitHub, Show HN, arXiv (and optionally Product Hunt) to find founders before they apply
+- **Claim Validation**: Bounded public evidence checks via Tavily, with per-claim confidence and contradiction flagging
+- **Adaptive Interview**: 4-5 question session that assesses founder resilience and updates the persistent score
+- **Memory Layer**: Event-triggered, EMA-based scoring that accumulates evidence across every signal a founder generates over time
 
-**Result**: Full investment memo with verdict (approve/review/decline) and check recommendation in under 24 hours.
+**Result:** an investment memo with verdict (approve/review/decline) and check recommendation, backed by cited evidence.
+
+**On profile enrichment, precisely:** Scout does *not* search the web to guess who a founder is. LinkedIn/GitHub enrichment only activates for URLs a founder explicitly types into the apply form — matching the project's own rule to never infer identity from a search result.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
-### Tech Stack
+### Tech stack
 
-**Backend** (Python 3.13+)
-- FastAPI - API framework
-- SQLite - Application/interview storage
-- OpenAI GPT-4o - LLM reasoning for scoring, claim validation, interviews
-- Tavily - Bounded web search for claim validation and profile discovery
-- Pydantic - Data validation
-- People Data Labs - LinkedIn profile enrichment (optional)
+**Backend** (Python 3.9+, tested through 3.13)
+- FastAPI, SQLite, Pydantic
+- OpenAI — LLM reasoning for scoring, claim validation, interviews, thesis judgment
+- Tavily — bounded web search for claim validation and outbound discovery
+- People Data Labs — optional, exact-URL-only LinkedIn enrichment
+- Product Hunt API — optional, official GraphQL API for outbound sourcing
 
-**Frontend** (React 19)
-- React Router - Navigation
-- Vite - Build tool
-- Tailwind CSS 4 - Styling
-- Framer Motion - Animations
-- Lucide React - Icons
+**Frontend** (React 19, Node 20.19+/22.13+/24+ — see Prerequisites)
+- React Router, Vite, Tailwind CSS 4, Framer Motion, Lucide React
 
-### System Architecture
+### System architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        Frontend (React)                      │
-│  Dashboard │ Memo View │ Founder Results │ Interview        │
+│  Dashboard │ Memo View │ Founder Results │ Interview │ Thesis│
 └────────────────────────┬────────────────────────────────────┘
-                         │ REST API
+                          │ REST API
 ┌────────────────────────▼────────────────────────────────────┐
 │                     FastAPI Backend                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
@@ -53,405 +50,226 @@ Traditional VC evaluation takes weeks and relies heavily on manual review. Found
 │  │              │  │              │  │              │      │
 │  │ • Deck Parse │  │ • Multi-Axis │  │ • Validator  │      │
 │  │ • Outbound   │  │ • Thesis     │  │ • Memo       │      │
-│  │ • Team Auto  │  │ • Query      │  │ • Interview  │      │
-│  │   Discovery  │  │   Parser     │  │              │      │
+│  │   Scan       │  │   Engine     │  │ • Interview  │      │
+│  │ • Activate/  │  │ • Query      │  │              │      │
+│  │   Outreach   │  │   Parser     │  │              │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 │                                                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │  Memory DB   │  │  App Store   │  │ Presentation │      │
-│  │  (EMA Score) │  │  (SQLite)    │  │  (Enrichment)│      │
+│  │  (db.py)     │  │  (store.py)  │  │  (Enrichment)│      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## ✨ Key Features
-
-### 1. **Intelligent Team Discovery**
-Automatically finds LinkedIn and GitHub profiles for all team members mentioned in pitch decks using Tavily search. Supports multiple name formats ("Name as Role", "Name (Role)").
-
-### 2. **Multi-Axis Scoring System**
-Three independent axes scored 0-100 or bullish/neutral/bear:
-- **Founder Axis**: Track record, execution ability, technical depth
-- **Market Axis**: Timing, market size, growth trajectory
-- **Idea-vs-Market Axis**: Product-market fit, competition, positioning
-
-**Founder Score Formula:**
-```
-Founder Score = 0.30×Track Record + 0.20×Traction Signal
-              + 0.25×Founder-Market Fit + 0.25×Resilience
-```
-
-### 3. **Adaptive Interview Agent**
-5-question session that:
-- Challenges founders on deck claims
-- Identifies evasive vs. engaged patterns
-- Scores resilience (engaged_updated: 90, defensive: 35, evasive: 15)
-- Updates Founder Score based on responses
-
-### 4. **Memory Layer with EMA Scoring**
-Persistent scoring across multiple signals:
-- **Exponential Moving Average** (α=0.3) weights recent evidence
-- **Confidence interval** narrows with more independent sources (25→5)
-- **Event-triggered recomputation** on every new signal
-- **Append-only audit trail** preserves complete history
-
-### 5. **Bounded Claim Validation**
-Never unbounded scraping - only:
-- 5 Tavily results for company press
-- 1 GitHub profile check
-- 1 company website metadata fetch
-- Exact LinkedIn URLs supplied by founders
-
-### 6. **Two-Stage Thesis Engine**
-1. **Deterministic gate**: Keyword matching for exact/adjacent/reject
-2. **LLM judgment**: GPT-4o evaluates edge cases for adjacent sectors
+**Note on the two storage layers:** `db.py` (Memory layer — founders/signals, event-triggered EMA recompute) and `store.py` (ApplicationStore — the actual application/memo/decision records the frontend reads) are separate systems, not one unified store. Outbound-discovered signal history is merged into an application's scoring input at conversion time, but the two Founder Score computations otherwise run independently. Worth knowing if you're extending either.
 
 ---
 
-## 🚀 Getting Started
+## Getting started
 
 ### Prerequisites
 
-- Python 3.13+
-- Node.js 18+
-- OpenAI API key
-- Tavily API key
-- (Optional) People Data Labs API key
+- **Python 3.9+** (developed and tested primarily on 3.9.6 — no 3.10+-only syntax is required)
+- **Node.js `^20.19.0 || ^22.13.0 || >=24`** — a plain `node -v` showing v20.14 or similar **will fail** to run the frontend dev server (a real, previously-hit issue: Vite's `rolldown` engine needs this range). Use [nvm](https://github.com/nvm-sh/nvm):
+  ```bash
+  nvm install 24
+  nvm use 24
+  ```
+- An OpenAI API key and a Tavily API key (both required — nothing runs without them)
 
-### Installation
+### 1. Clone
 
-**1. Clone the repository**
 ```bash
 git clone https://github.com/aryanpradhan1/VCBrain.git
 cd VCBrain
 ```
 
-**2. Backend Setup**
+### 2. Backend setup
+
 ```bash
 cd backend
+pip3 install -r requirements.txt      # one complete list — installs everything every backend module needs
 
-# Install Python dependencies
-pip3 install -r requirements.txt
-
-# Set environment variables
-export OPENAI_API_KEY='sk-...'
-export TAVILY_API_KEY='tvly-...'
-export PEOPLE_DATA_LABS_API_KEY='...'  # Optional
+cp .env.example .env
+# then edit backend/.env and fill in OPENAI_API_KEY and TAVILY_API_KEY at minimum.
+# Everything else in that file is optional and degrades gracefully if left blank
+# (cold-outreach sending, Product Hunt, People Data Labs, outbound scan pool sizes).
 ```
 
-**3. Frontend Setup**
+`backend/.env` is the **one** canonical env file — `backend/api/main.py` loads it automatically on startup regardless of which directory you run `uvicorn` from. You no longer need to `export` anything by hand. (`backend/api/requirements.txt` and `backend/scoring/requirements.txt` still exist as subsets for running those modules standalone, but `backend/requirements.txt` is the one to install for running the app.)
+
+### 3. Frontend setup
+
 ```bash
 cd ../frontend
-
-# Install Node dependencies
+nvm use 24          # see Prerequisites — required, not optional
 npm install
+```
 
-# Create .env file
+No frontend `.env` is required to point at a local backend — `VITE_API_URL` defaults sensibly, or set it explicitly:
+```bash
 echo 'VITE_API_URL=http://localhost:8000' > .env
 ```
 
-### Running the Application
+### Running it
 
-**Terminal 1 - Backend**
+**Terminal 1 — backend** (first boot takes a few minutes: it runs the real diligence pipeline — real Tavily + OpenAI calls — against every seeded fixture)
 ```bash
 cd backend/api
 python3 main.py
 ```
-Backend runs at http://localhost:8000
+Runs at http://localhost:8000. Interactive API docs at http://localhost:8000/docs.
 
-**Terminal 2 - Frontend**
+**Terminal 2 — frontend**
 ```bash
 cd frontend
+nvm use 24
 npm run dev
 ```
-Frontend runs at http://localhost:5173
+Runs at http://localhost:5173.
 
-**Access the application:** Open http://localhost:5173 in your browser
+Open http://localhost:5173.
 
 ---
 
-## 📁 Project Structure
+## Project structure
 
 ```
 VCBrain/
 ├── backend/
-│   ├── api/                      # FastAPI application
-│   │   ├── main.py              # API routes and glue logic
-│   │   ├── db.py                # Memory layer (EMA scoring)
-│   │   ├── store.py             # Application storage (SQLite)
-│   │   ├── presentation.py      # Data enrichment for UI
-│   │   ├── source_enrichment.py # Profile discovery, metadata
-│   │   └── document_intake.py   # Deck parsing
-│   ├── scoring/                  # Multi-axis scorer
-│   │   ├── multi_axis_scorer.py # Founder/Market/Idea scoring
-│   │   ├── thesis_engine.py     # Investment thesis matching
-│   │   └── query_parser.py      # Natural language search
-│   ├── diligence_memo/          # Claim validation & memo
-│   │   ├── validator.py         # Tavily-based claim checking
-│   │   ├── memo.py              # Investment memo synthesis
-│   │   └── interview.py         # Adaptive interview agent
-│   └── signal_intake/           # Inbound & outbound sourcing
-│       ├── deck_parser.py       # Extract claims from decks
-│       └── outbound_scan.py     # GitHub/HN/arXiv scanning
+│   ├── .env.example              # canonical env template — copy to backend/.env
+│   ├── requirements.txt          # the one complete install target
+│   ├── api/                      # FastAPI application (API glue)
+│   │   ├── main.py               # routes, pipeline orchestration, loads backend/.env
+│   │   ├── db.py                 # Memory layer (founders/signals, EMA recompute)
+│   │   ├── store.py              # application storage (SQLite)
+│   │   ├── presentation.py       # enrichment shaping for the UI
+│   │   ├── source_enrichment.py  # exact-URL profile enrichment, press search
+│   │   └── document_intake.py    # deck text/image extraction
+│   ├── scoring/                  # Multi-Axis Scorer, Thesis Engine, Query Parser
+│   ├── diligence_memo/           # Claim Validator, Trust Score, Memo Synthesizer, Interview Agent
+│   └── signal_intake/            # Deck parsing (inbound) + GitHub/HN/arXiv/Product Hunt scanning (outbound)
 ├── frontend/
-│   ├── src/
-│   │   ├── pages/               # Route pages
-│   │   │   ├── dashboard.jsx   # Opportunity list
-│   │   │   ├── memo.jsx        # Full investment memo
-│   │   │   ├── founder-results.jsx # Founder score view
-│   │   │   └── interview.jsx   # Interview session
-│   │   ├── components/          # Reusable UI components
-│   │   └── lib/                 # API client, utilities
-│   └── public/
+│   └── src/
+│       ├── pages/                 # dashboard, memo, founder-results, interview, thesis, apply, network
+│       ├── components/
+│       └── lib/                   # API client
 ├── shared/
-│   ├── fixtures/                # Test data
-│   └── contract.md             # API contract spec
+│   ├── fixtures/                  # seed/demo data
+│   └── contract.md                # locked data contract — the source of truth for every shape above
 └── README.md
 ```
 
 ---
 
-## 🔌 API Documentation
+## API reference
 
-### Core Endpoints
+Full interactive docs at `/docs` once the backend is running. Core endpoints:
 
-#### `GET /opportunities`
-List all opportunities with optional filtering
-```bash
-# All opportunities
-curl http://localhost:8000/opportunities
-
-# Natural language query
-curl "http://localhost:8000/opportunities?query=technical+founder+AI+infra"
-
-# Thesis filter
-curl "http://localhost:8000/opportunities?thesis_filter=true"
-```
-
-#### `GET /opportunities/{company_id}`
-Get full opportunity details (investor view)
-```json
-{
-  "founder_id": "f001",
-  "company_id": "c001",
-  "founder_score": {
-    "value": 68,
-    "confidence_interval": 12,
-    "trend": "improving"
-  },
-  "founder_axis": { "score": 72, "rationale": "...", "citations": [...] },
-  "market_axis": { "rating": "bullish", "rationale": "..." },
-  "claim_trust": [...],
-  "memo": { "required": {...}, "optional_or_flagged": {...} },
-  "verdict": "approve",
-  "amount_recommended": 100000
-}
-```
-
-#### `GET /founders/{founder_id}/results`
-Founder-facing lightweight view (read-only)
-```json
-{
-  "founder_score": {
-    "value": 65,
-    "confidence_interval": 10,
-    "trend": "stable"
-  },
-  "narrative": "Strong profile with demonstrated execution ability..."
-}
-```
-
-#### `POST /founders/{founder_id}/interviews`
-Start or resume interview session
-```json
-{
-  "session_id": "session-123",
-  "status": "active",
-  "question": "What is the strongest evidence that customers want what you are building?",
-  "question_number": 1,
-  "total_questions": 5
-}
-```
-
-#### `POST /interviews/{session_id}/responses`
-Submit interview response
-```bash
-curl -X POST http://localhost:8000/interviews/session-123/responses \
-  -H "Content-Type: application/json" \
-  -d '{"response": "We have 50 LOIs from hospitals..."}'
-```
-
-**Interactive API Docs:** http://localhost:8000/docs
+| Endpoint | Purpose |
+|---|---|
+| `GET /opportunities` | List, with optional `?query=` (natural-language) or `?thesis_filter=true` |
+| `GET /opportunities/{company_id}` | Full investor view — scores, memo, trust, adversarial view, portfolio check |
+| `POST /opportunities/{company_id}/decision` | Record approve/review/decline |
+| `POST /applications` | Submit a new application (multipart: deck + founder info) |
+| `GET /applications/{company_id}` | Poll processing status |
+| `GET /founders/{founder_id}/results` | Founder-facing view — score, interval, trend, narrative **only** |
+| `GET /thesis` / `PUT /thesis` | Read/write the fund's investment thesis |
+| `POST /founders/{founder_id}/interviews` | Start/resume an adaptive interview |
+| `POST /interviews/{session_id}/responses` | Submit an interview answer |
+| `POST /outbound/scan` | Manually trigger a bounded outbound scan (not scheduled — see Known limitations) |
+| `GET /outbound/leads` | Outbound-sourced candidates and their outreach status |
+| `GET /outbound/unsubscribe/{founder_id}` | Unsubscribe landing page linked from outreach emails |
 
 ---
 
-## 🧪 Testing
+## Testing
 
-### Backend Tests
+Test files across the backend use two different styles — run each the way it's actually written, not with pytest (not a project dependency):
+
+**`unittest`-based suites** (from `backend/`, with `backend/.env` populated):
+```bash
+cd backend
+python3 -m unittest signal_intake.test_deck_parser signal_intake.test_outbound_scan
+python3 -m unittest diligence_memo.tests.test_pipeline
+python3 -m unittest api.test_source_enrichment
+```
+
+**Standalone scripts** (print their own pass/fail, run directly — some make real API calls):
 ```bash
 cd backend/scoring
-python3 -m pytest test_all_axes.py
-python3 -m pytest test_thesis_engine.py
-python3 -m pytest test_query_parser.py
-```
-
-### Manual Testing
-```bash
-# Test team member auto-discovery
-cd backend/api
-python3 test_team_discovery.py
-
-# Test updated scoring rubric
+python3 test_thesis_engine.py
+python3 test_all_axes.py
+python3 test_founder_axis.py
+python3 test_query_parser.py
 python3 test_rescore.py
 
-# API health check
-curl http://localhost:8000/health
+cd ../api
+python3 test_team_discovery.py
+```
+
+```bash
+curl http://localhost:8000/health   # quick liveness check
 ```
 
 ---
 
-## 🎨 Design System
+## How it works
 
-### Color Palette
-- **Primary**: Blue 600 (`#2563eb`)
-- **Success**: Emerald 600 (`#10b981`)
-- **Warning**: Amber 600 (`#d97706`)
-- **Danger**: Red 600 (`#dc2626`)
-
-### Typography
-- **Font**: Inter Variable (system fallback: -apple-system, BlinkMacSystemFont)
-- **Headings**: 600-700 weight, tight tracking
-- **Body**: 400 weight, relaxed leading
-
-### Components
-- **Cards**: Rounded corners (12-24px), subtle shadows, backdrop blur
-- **Buttons**: Gradient backgrounds, hover scale animations
-- **Animations**: Framer Motion with custom easing curves
-
----
-
-## 🧠 How It Works
-
-### Application Processing Pipeline
+### Processing pipeline
 
 ```
-1. INTAKE
-   └─ Extract deck claims (market_size, traction, team, ask, problem_product)
-   └─ Parse team members from deck text
-   └─ Auto-discover LinkedIn/GitHub profiles via Tavily
+1. SOURCING
+   Inbound:  founder applies with a deck + name
+   Outbound: bounded GitHub/HN/arXiv/Product Hunt scan → partial score → Activate
+             above threshold → cold outreach → converges into the same funnel if
+             the founder applies via the emailed link
 
-2. SCORING
-   └─ Multi-Axis Scorer evaluates Founder/Market/Idea independently
-   └─ Thesis Engine determines exact/adjacent/reject match
-   └─ Memory Layer computes EMA-based Founder Score
+2. SCREENING / SCORING
+   Deck claims extracted → Multi-Axis Scorer evaluates Founder/Market/Idea
+   independently (never averaged) → Thesis Engine gates on sector/stage/geo/check
+   size → persistent Founder Score computed from the locked formula
 
 3. DILIGENCE
-   └─ Claim Validator checks each deck claim against Tavily results
-   └─ Trust scores assigned (high/medium/low confidence)
-   └─ Memo Synthesizer generates investment memo
+   Claim Validator cross-references each deck claim against bounded Tavily
+   evidence → per-claim Trust Score (confidence + evidence) → contradictions
+   flagged → Memo Synthesizer assembles the Appendix-1 memo + adversarial view
+   + portfolio check
 
-4. INTERVIEW (Optional)
-   └─ Founder answers 5 adaptive questions
-   └─ Response pattern classified (engaged/defensive/evasive)
-   └─ Resilience score computed, Founder Score updated
+4. INTERVIEW (optional, founder-initiated)
+   4-5 adaptive questions challenge specific deck claims → response pattern
+   classified → resilience score → persistent Founder Score recomputed
 
-5. VERDICT
-   └─ Decline if thesis doesn't match
-   └─ Otherwise, use diligence verdict (approve/review/decline)
-   └─ Recommend check amount ($0-$100K)
+5. DECISION
+   Auto-decline if thesis doesn't match; otherwise the diligence verdict
+   (approve/review/decline) stands, with a check amount recommendation
 ```
 
-### Founder Score Evolution
+### Founder Score formula
 
 ```
-Signal 1 (Deck):           Score = 53 ± 25  (cold start, wide interval)
-Signal 2 (GitHub):         Score = 56 ± 18  (more evidence, narrowing)
-Signal 3 (HN Launch):      Score = 59 ± 14  (upward trend)
-Signal 4 (Interview: 90):  Score = 65 ± 10  (strong interview boosts score)
+Founder Score = 0.30 × Track Record + 0.20 × Traction Signal
+              + 0.25 × Founder-Market Fit + 0.25 × Resilience/Coachability
 ```
 
-**Formula:** `new_score = 0.3 × new_signal + 0.7 × old_score`
+Reported as `value ± confidence_interval`, recomputed on new evidence — never via model retraining.
 
 ---
 
-## 👥 Team
+## Known limitations (accurate as of the last working session — check before citing in pitch materials)
 
-**Aryan Pradhan** 
-**Shrishant Hattarki**
-**Anay Apte**
-**Subash Skanthakumar**
-
----
-
-## 📝 Development Notes
-
-### Key Design Decisions
-
-1. **Why EMA over simple average?**
-   Recent signals matter more in founder evaluation. EMA (α=0.3) gives 30% weight to new evidence while maintaining historical context.
-
-2. **Why separate axes instead of a single score?**
-   Averaging masks critical information. A 70/100 could mean "good at everything" or "great founder, terrible market" - investors need to see both.
-
-3. **Why bounded search only?**
-   Unbounded scraping is expensive, slow, and legally risky. We limit to 5 Tavily results + 1 GitHub check + exact founder-submitted URLs.
-
-4. **Why SQLite instead of Postgres?**
-   Zero-setup, file-based, perfect for single-server deployments. Production would scale to Postgres if needed.
-
-### Contract-Driven Development
-
-All modules follow strict contracts defined in `/shared/contract.md`:
-- Signal Intake outputs → Scoring inputs
-- Scoring outputs → Diligence inputs
-- Diligence outputs → Frontend shapes
-
-This prevents integration bugs and enables parallel development.
+- **Outbound scanning is manual, not scheduled.** `POST /outbound/scan` runs on request; there is no cron/scheduler anywhere in the codebase yet, despite the contract describing a "bounded daily scan."
+- **Devpost is not integrated** — no public API exists for it without scraping, which this project deliberately avoids; only GitHub, Show HN, arXiv, and (optionally) Product Hunt are live.
+- **The two storage layers aren't fully unified** (see Architecture note above) — `db.py`'s Memory layer and the application store that actually drives investor-facing scores are separate systems with a partial bridge, not one system.
+- **`founder_score.trend` on the main scoring path is currently hardcoded to `"stable"`** — per-axis trends are real LLM judgments, but the aggregate trend does not yet reflect real historical momentum.
+- **Cap table and financials are always reported as "Not disclosed"** — there's no code path that captures them from anything yet.
+- **Portfolio check compares against a hardcoded 3-sector list**, not a real, configurable portfolio.
 
 ---
 
-## 🚢 Deployment
+## Team
 
-**Backend (Railway/Render)**
-```bash
-# Set environment variables in dashboard
-OPENAI_API_KEY=sk-...
-TAVILY_API_KEY=tvly-...
+Aryan Pradhan · Shrishant Hattarki · Anay Apte · Subash Skanthakumar
 
-# Deploy command
-uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT
-```
-
-**Frontend (Vercel/Netlify)**
-```bash
-# Build command
-npm run build
-
-# Environment variables
-VITE_API_URL=https://your-backend.railway.app
-```
-
----
-
-## 📄 License
-
-MIT License - See LICENSE file for details
-
----
-
-## 🙏 Acknowledgments
-
-- OpenAI GPT-4o for LLM reasoning
-- Tavily for bounded web search
-- People Data Labs for LinkedIn enrichment
-- Hack Nation for inspiration and support
-
----
-
-## 📧 Contact
-
-Questions? Reach out to [aryanpradhan2023@gmail.com](mailto:aryanpradhan2023@gmail.com)
-
-**Built with ❤️ by the Scout team**
+Built for Hack Nation's Global AI Hackathon, Maschmeyer Group's "VC Brain" challenge track.

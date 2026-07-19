@@ -5,9 +5,17 @@ Each axis scored independently with LLM reasoning, never averaged.
 
 import os
 import re
+from pathlib import Path
 from typing import Dict, List, Any, Literal
+from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel
+
+# This module reads OPENAI_API_KEY at import time (below), so it must be loaded before
+# that regardless of entry point -- main.py loading backend/.env doesn't help when this
+# module is imported directly (a standalone script, a test run, a REPL). Silent no-op if
+# backend/.env doesn't exist.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 # Type definitions matching the contract
