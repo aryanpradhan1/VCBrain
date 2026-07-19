@@ -29,6 +29,10 @@ from backend.scoring import (
     ThesisOutput,
 )
 
+# Import C's diligence/trust/memo pipeline -- real calls, not ad-hoc mocks
+from backend.diligence_memo import ClaimValidator, DiligenceMemoPipeline, MemoSynthesizer
+from backend.diligence_memo.clients import OpenAIReasoningClient, TavilySearchClient
+
 
 app = FastAPI(
     title="FounderScore API",
@@ -148,12 +152,32 @@ class DecisionRequest(BaseModel):
 # ==================== In-Memory Storage (Demo) ====================
 # In production, this would be SQLite/Postgres
 
+# Keyed by company_id (not a synthetic id) -- the frontend links via
+# `/opportunities/${opp.company_id}` (see frontend/src/pages/dashboard.jsx), so the
+# lookup key here must match that exactly.
 OPPORTUNITIES_DB: Dict[str, Dict[str, Any]] = {}
 FOUNDERS_DB: Dict[str, Dict[str, Any]] = {}
 
+# Real diligence/memo pipeline (C's module). Built once and reused -- validate() makes a
+# Tavily search + OpenAI call per claim, so this must never run per-request.
+_diligence_pipeline = DiligenceMemoPipeline(
+    validator=ClaimValidator(
+        search_client=TavilySearchClient(),
+        reasoning_client=OpenAIReasoningClient(),
+    ),
+    memo=MemoSynthesizer(),
+)
+
 
 def load_fixture_data():
-    """Load test fixtures into in-memory DB"""
+    """Load test fixtures into in-memory DB.
+
+    Diligence/memo is computed once here, at startup, and cached -- NOT recomputed per
+    request. Every opportunity needs the same real-shape assembly whether it's shown in
+    the list or the detail view (see _assemble_opportunity below), so running the real
+    Tavily+OpenAI pipeline per HTTP request would multiply cost with every dashboard
+    refresh instead of once per opportunity per server lifetime.
+    """
     fixtures = [
         "signal_intake_strong.json",
         "signal_intake_cold_start.json",
@@ -161,23 +185,28 @@ def load_fixture_data():
         "signal_intake_adjacent.json",
     ]
 
-    for i, fixture_name in enumerate(fixtures):
+    for fixture_name in fixtures:
         try:
             with open(f"../../shared/fixtures/{fixture_name}") as f:
                 data = json.load(f)
 
-                # Score this opportunity
+                company_id = data["company_id"]
+                founder_id = data["founder_id"]
+                company_name = f"Company {company_id}"  # placeholder: no module in the
+                # pipeline currently captures a real company name as a structured field
+
                 multi_axis = score_all_axes(data)
                 thesis = evaluate_thesis_fit(data)
+                diligence_memo = _diligence_pipeline.run(
+                    {"company_name": company_name, "deck_claims": data.get("deck_claims", [])}
+                )
 
-                # Store in DB
-                opp_id = f"opp_{i+1}"
-                founder_id = data["founder_id"]
-
-                OPPORTUNITIES_DB[opp_id] = {
+                OPPORTUNITIES_DB[company_id] = {
                     "signal_data": data,
+                    "company_name": company_name,
                     "multi_axis": multi_axis,
                     "thesis": thesis,
+                    "diligence_memo": diligence_memo,
                 }
 
                 FOUNDERS_DB[founder_id] = {
@@ -186,6 +215,9 @@ def load_fixture_data():
 
         except FileNotFoundError:
             print(f"Warning: Fixture {fixture_name} not found")
+            continue
+        except Exception as e:
+            print(f"Warning: Could not process fixture {fixture_name}: {e}")
             continue
 
 
@@ -208,81 +240,38 @@ def health_check():
     return {"status": "ok", "service": "FounderScore API"}
 
 
-@app.get("/opportunities/{opportunity_id}", response_model=OpportunityResponse)
-def get_opportunity(opportunity_id: str):
-    """
-    Get full opportunity details (investor view)
-
-    Returns complete multi-axis scores, memo, adversarial view, etc.
-    """
-    if opportunity_id not in OPPORTUNITIES_DB:
-        raise HTTPException(status_code=404, detail="Opportunity not found")
-
-    opp = OPPORTUNITIES_DB[opportunity_id]
+def _assemble_opportunity(company_id: str) -> OpportunityResponse:
+    """Single assembly path for a full opportunity record -- used by both the list and
+    detail endpoints, so the dashboard and the memo view are never fed two different
+    shapes for the same company. Reads the diligence/memo output cached at startup by
+    load_fixture_data() rather than recomputing it (see the cost note there)."""
+    opp = OPPORTUNITIES_DB[company_id]
     signal_data = opp["signal_data"]
     multi_axis = opp["multi_axis"]
     thesis = opp["thesis"]
+    diligence_memo = opp["diligence_memo"]
 
-    # Mock data for components not yet built
-    # (Diligence/Validator, Trust Score, Memo Synthesizer, Interview Agent)
-
-    # Extract company name from deck claims
-    problem_claims = [c for c in signal_data.get("deck_claims", [])
-                      if c.get("field") == "problem_product"]
-    company_name = f"Company {opportunity_id}"  # Placeholder
-
-    # Mock claim trust (would come from Diligence module)
-    claim_trust = [
-        ClaimTrust(claim="traction", confidence="high", evidence="deck_slide_7"),
-        ClaimTrust(claim="market_size", confidence="medium", evidence="deck_slide_5"),
-    ]
-
-    # Mock memo (would come from Memo Synthesizer)
+    claim_trust = [ClaimTrust(**item) for item in diligence_memo["trust"]["claim_trust"]]
     memo = MemoResponse(
-        required=MemoRequired(
-            company_snapshot=f"Early-stage company in {signal_data.get('sourcing_channel')} pipeline",
-            investment_hypotheses=[
-                "Strong technical founder with execution track record",
-                "Growing market with favorable dynamics"
-            ],
-            swot={
-                "strengths": ["Technical team", "Early traction"],
-                "weaknesses": ["Limited market data"],
-                "opportunities": ["Market expansion"],
-                "threats": ["Competition"]
-            },
-            problem_and_product=problem_claims[0].get("value") if problem_claims else "Not specified",
-            traction_kpis="See deck slide 7"
-        ),
-        optional_or_flagged=MemoOptional(
-            cap_table="Not disclosed",
-            team_and_history="See deck slide 3"
-        )
+        required=MemoRequired(**diligence_memo["memo"]["required"]),
+        optional_or_flagged=MemoOptional(**diligence_memo["memo"]["optional_or_flagged"]),
     )
+    adversarial_view = AdversarialView(**diligence_memo["adversarial_view"])
+    portfolio_check = PortfolioCheck(**diligence_memo["portfolio_check"])
 
-    # Mock adversarial view
-    adversarial_view = AdversarialView(
-        challenges=["Market size claims need validation", "Competitive moat unclear"]
-    )
-
-    # Mock portfolio check
-    portfolio_check = PortfolioCheck(
-        overlap=False,
-        note="No sector overlap with existing portfolio"
-    )
-
-    # Determine verdict based on thesis + founder score
+    # Thesis Engine is a gate: a non-match always declines regardless of what diligence
+    # found, since an out-of-thesis company was never a candidate to fund. Otherwise C's
+    # real diligence/memo verdict (grounded in flagged claims + evidence) is authoritative
+    # -- not re-derived ad hoc from founder_score here.
     if not thesis.thesis_match:
         verdict = "decline"
-    elif multi_axis.founder_score.value >= 70:
-        verdict = "approve"
     else:
-        verdict = "review"
+        verdict = diligence_memo["verdict"]
 
     return OpportunityResponse(
         founder_id=signal_data["founder_id"],
         company_id=signal_data["company_id"],
-        company_name=company_name,
+        company_name=opp["company_name"],
         sourcing_channel=signal_data["sourcing_channel"],
         cold_start_flag=signal_data["cold_start_flag"],
         founder_score=FounderScoreResponse(**multi_axis.founder_score.dict()),
@@ -294,8 +283,21 @@ def get_opportunity(opportunity_id: str):
         adversarial_view=adversarial_view,
         portfolio_check=portfolio_check,
         verdict=verdict,
-        amount_recommended=100000 if verdict == "approve" else 0
+        amount_recommended=diligence_memo["amount_recommended"] if verdict == "approve" else 0,
     )
+
+
+@app.get("/opportunities/{company_id}", response_model=OpportunityResponse)
+def get_opportunity(company_id: str):
+    """
+    Get full opportunity details (investor view)
+
+    Returns complete multi-axis scores, memo, adversarial view, etc.
+    """
+    if company_id not in OPPORTUNITIES_DB:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+
+    return _assemble_opportunity(company_id)
 
 
 @app.get("/founders/{founder_id}/results", response_model=FounderResultsResponse)
@@ -326,31 +328,36 @@ def get_founder_results(founder_id: str):
     )
 
 
-@app.post("/opportunities/{opportunity_id}/decision")
-def record_decision(opportunity_id: str, request: DecisionRequest):
+@app.post("/opportunities/{company_id}/decision")
+def record_decision(company_id: str, request: DecisionRequest):
     """
     Record investment decision for an opportunity
 
     In production, this would update database and trigger notifications.
     """
-    if opportunity_id not in OPPORTUNITIES_DB:
+    if company_id not in OPPORTUNITIES_DB:
         raise HTTPException(status_code=404, detail="Opportunity not found")
 
     # Mock: just return success
     return {
-        "opportunity_id": opportunity_id,
+        "company_id": company_id,
         "decision": request.decision,
         "status": "recorded"
     }
 
 
-@app.get("/opportunities")
+@app.get("/opportunities", response_model=List[OpportunityResponse])
 def list_opportunities(
     query: Optional[str] = None,
     thesis_filter: bool = False
 ):
     """
-    List all opportunities with optional filtering
+    List all opportunities with optional filtering.
+
+    Returns a bare array of full opportunity records (same shape as
+    GET /opportunities/{company_id}) -- frontend/src/lib/api.js calls .sort() directly
+    on this response, and dashboard.jsx's Row renders founder_axis/claim_trust/etc.
+    straight from each list item, so this can't be a slimmer projection.
 
     Args:
         query: Natural language query (e.g., "technical founder, AI infra")
@@ -358,9 +365,8 @@ def list_opportunities(
     """
     results = []
 
-    for opp_id, opp_data in OPPORTUNITIES_DB.items():
+    for company_id, opp_data in OPPORTUNITIES_DB.items():
         signal_data = opp_data["signal_data"]
-        multi_axis = opp_data["multi_axis"]
         thesis = opp_data["thesis"]
 
         # Apply thesis filter
@@ -377,19 +383,9 @@ def list_opportunities(
             except Exception as e:
                 print(f"Query parse error: {e}")
 
-        results.append({
-            "opportunity_id": opp_id,
-            "founder_id": signal_data["founder_id"],
-            "company_id": signal_data["company_id"],
-            "founder_score": multi_axis.founder_score.value,
-            "confidence_interval": multi_axis.founder_score.confidence_interval,
-            "trend": multi_axis.founder_score.trend,
-            "thesis_match": thesis.thesis_match,
-            "sourcing_channel": signal_data["sourcing_channel"],
-            "cold_start_flag": signal_data["cold_start_flag"],
-        })
+        results.append(_assemble_opportunity(company_id))
 
-    return {"count": len(results), "opportunities": results}
+    return results
 
 
 if __name__ == "__main__":
