@@ -105,6 +105,7 @@ function SummaryRail({ opp }) {
 
         <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
           <Badge variant={verdictMeta[opp.verdict].variant}>{verdictMeta[opp.verdict].label}</Badge>
+          {e?.reference_profile && <Badge variant="outline" title={e.reference_label}>Public reference</Badge>}
           <ChannelBadge channel={opp.sourcing_channel} />
           {opp.cold_start_flag && <ColdStartBadge />}
         </div>
@@ -267,6 +268,15 @@ function FounderCard({ founder }) {
           </div>
         </div>
         <p className="mt-1 text-[13px] leading-relaxed text-foreground/75">{founder.background}</p>
+        {founder.affiliations?.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Public affiliations">
+            {founder.affiliations.map((affiliation) => (
+              <span key={affiliation} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-600">
+                {affiliation}
+              </span>
+            ))}
+          </div>
+        )}
         {founder.ai_read && (
           <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-violet-50/70 px-2.5 py-2">
             <ShieldCheck className="mt-0.5 size-3 shrink-0 text-violet-500" />
@@ -734,10 +744,22 @@ export default function Memo() {
                 <Section
                   icon={ChartPie}
                   title="Market"
-                  sub={hasFullMarketSizing(e.market) ? "Founder-declared sizing, with independent evidence kept separate" : "No complete investable sizing was disclosed in the submitted materials"}
+                  sub={e.reference_profile ? "External benchmark with SAM / SOM assumptions labeled explicitly" : hasFullMarketSizing(e.market) ? "Founder-declared sizing, with independent evidence kept separate" : "No complete investable sizing was disclosed in the submitted materials"}
                   right={<RatingPill rating={opp.market_axis.rating} />}>
                   <div className="rounded-xl border border-border bg-card p-5">
                     {hasFullMarketSizing(e.market) ? <><MarketChart market={e.market} /><Separator className="my-4" /></> : <div className="flex items-start gap-3 rounded-lg bg-slate-50 p-3.5"><ChartPie className="mt-0.5 size-4 shrink-0 text-slate-400" /><div><p className="text-sm font-medium">TAM / SAM / SOM not provided</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">The system will not invent a market model. Ask for a defined customer segment, pricing basis, and bottom-up revenue bridge before underwriting the opportunity.</p></div></div>}
+                    {e.competitors?.length > 0 && (
+                      <div className="mb-4 grid gap-3 rounded-lg bg-slate-50/80 p-3.5 sm:grid-cols-[1fr_1.5fr]">
+                        <div>
+                          <div className="text-[10px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">Competitive set</div>
+                          <div className="mt-2 flex flex-wrap gap-1.5">{e.competitors.map((name) => <Badge key={name} variant="outline">{name}</Badge>)}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">Sizing method</div>
+                          <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{e.market_method}</p>
+                        </div>
+                      </div>
+                    )}
                     <div className="mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">Relevant coverage</div>
                     <NewsList news={e.news} opp={opp} />
                   </div>

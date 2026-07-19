@@ -1,0 +1,330 @@
+[
+  {
+    "company_id": "ref-posthog",
+    "founder_id": "ref-james-hawkins",
+    "company_name": "PostHog",
+    "profile": {
+      "founder_name": "James Hawkins",
+      "founder_role": "Co-founder & CEO",
+      "photo_url": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/d5c234d7654af82b2d5c405637dcf9ee0e51268a.jpg",
+      "founder_background": "Co-founded PostHog with Tim Glaser; its YC profile identifies the company as a W20 developer-tools company.",
+      "founder_affiliations": ["PostHog", "Y Combinator · W20"],
+      "founder_ai_read": "Curated public reference: founder identity is linked to the cited YC and company sources; it was not inferred from a name search.",
+      "team_members": [
+        {
+          "name": "Tim Glaser",
+          "role": "Co-founder",
+          "photo_url": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/cdd2589b8ec6303aa76c3d16bcc8ad56fd403132.jpg",
+          "background": "Named alongside James Hawkins as a PostHog co-founder in the public company materials.",
+          "affiliations": ["PostHog", "Y Combinator · W20"],
+          "ai_read": "Curated public reference: identity is grounded in the cited company sources."
+        }
+      ],
+      "sector": "Developer tools",
+      "stage": "Public reference company",
+      "geography": "Public company",
+      "website": "https://posthog.com",
+      "reference_profile": true,
+      "reference_label": "Curated public reference — not a current investment recommendation"
+    },
+    "signal": {
+      "founder_id": "ref-james-hawkins",
+      "company_id": "ref-posthog",
+      "deck_claims": [
+        {
+          "field": "team",
+          "value": "James Hawkins and Tim Glaser co-founded PostHog; the company participated in Y Combinator's W20 batch.",
+          "source_slide": 1
+        },
+        {
+          "field": "problem_product",
+          "value": "PostHog is an open-source developer platform offering product analytics, session replay, feature flags, experimentation, error tracking, surveys, a data warehouse, CDP, and an AI product assistant.",
+          "source_slide": 2
+        },
+        {
+          "field": "market_size",
+          "value": "Developer tooling and product analytics are the relevant categories. This public reference seed intentionally contains no standalone TAM figure; live diligence must re-derive sizing from current sources.",
+          "source_slide": 3
+        },
+        {
+          "field": "traction",
+          "value": "The official PostHog repository has a long public commit history. This seed does not treat repository activity as founder-level revenue or customer proof.",
+          "source_slide": 4
+        }
+      ],
+      "public_signals": {
+        "github": {"repos": 0, "commit_consistency_score": 0.0, "longevity_months": 0},
+        "devpost_hn": {"launches": 0, "total_upvotes": 0},
+        "arxiv": {"papers": 0}
+      },
+      "sourcing_channel": "outbound",
+      "cold_start_flag": false
+    },
+    "sources": [
+      {
+        "type": "company_website",
+        "title": "PostHog website",
+        "url": "https://posthog.com",
+        "excerpt": "Official company site.",
+        "favicon_url": "https://bookface-images.s3.us-west-2.amazonaws.com/logos/85013b304f17b12eb2ee3602bf79080cdedaf8cf.png",
+        "source": "PostHog",
+        "page": null,
+        "retrieved_at": "2026-07-18T00:00:00+00:00"
+      },
+      {
+        "type": "public_reference",
+        "title": "public_reference_1 · YC company profile",
+        "url": "https://www.ycombinator.com/companies/posthog",
+        "excerpt": "YC identifies PostHog as a W20 developer-tools company and names James Hawkins and Tim Glaser as founders.",
+        "source": "Y Combinator",
+        "page": 1,
+        "retrieved_at": "2026-07-18T00:00:00+00:00"
+      },
+      {
+        "type": "github",
+        "title": "public_reference_2 · PostHog open-source repository",
+        "url": "https://github.com/posthog/posthog",
+        "excerpt": "Official repository describes the developer-product suite and exposes its public project history.",
+        "source": "GitHub · PostHog",
+        "page": 2,
+        "retrieved_at": "2026-07-18T00:00:00+00:00"
+      },
+      {
+        "type": "public_reference",
+        "title": "public_reference_3 · market-scope note",
+        "url": "https://posthog.com",
+        "excerpt": "No standalone market-size study is embedded in this curated reference; the live validator must establish a current sizing basis.",
+        "source": "FounderScore curation note",
+        "page": 3,
+        "retrieved_at": "2026-07-18T00:00:00+00:00"
+      },
+      {
+        "type": "github",
+        "title": "public_reference_4 · repository history",
+        "url": "https://github.com/posthog/posthog",
+        "excerpt": "Public repository history is company evidence only, not a proxy for customer or personal-founder metrics.",
+        "source": "GitHub · PostHog",
+        "page": 4,
+        "retrieved_at": "2026-07-18T00:00:00+00:00"
+      }
+    ],
+    "analysis": {
+      "verdict": "review",
+      "multi_axis": {
+        "founder_axis": {
+          "score": 88,
+          "trend": "stable",
+          "rationale": "This is a curated public reference, not a live applicant. The YC profile and company materials establish the named founding team and an enduring developer-product company; they do not substitute for a current personal diligence review.",
+          "citations": ["public_reference_1"]
+        },
+        "market_axis": {
+          "rating": "bullish",
+          "trend": "stable",
+          "rationale": "Developer tooling is the relevant category, but this reference deliberately does not embed a stale TAM number. A live investment memo must independently derive market sizing and competitive position from current evidence.",
+          "citations": ["public_reference_3"]
+        },
+        "idea_vs_market_axis": {
+          "rating": "bullish",
+          "trend": "stable",
+          "rationale": "The official project describes a broad, integrated developer-product suite. This is historical product evidence, not a claim that an early-stage opportunity has current product-market fit.",
+          "citations": ["public_reference_2"]
+        },
+        "founder_score": {"value": 88, "confidence_interval": 10, "trend": "stable"}
+      },
+      "thesis": {
+        "thesis_match": false,
+        "match_type": "exact",
+        "rationale": "Reference company only: excluded from the current pre-seed decision thesis."
+      },
+      "diligence_memo": {
+        "diligence": {"tavily_sources_checked": [], "flagged_claims": [], "memory_update": false},
+        "trust": {
+          "claim_trust": [
+            {"claim": "team", "confidence": "high", "evidence": "YC and company sources name the founding team."},
+            {"claim": "problem_product", "confidence": "high", "evidence": "The official open-source repository describes the listed product capabilities."},
+            {"claim": "market_size", "confidence": "low", "evidence": "No independent current sizing study is embedded in this reference seed."},
+            {"claim": "traction", "confidence": "medium", "evidence": "The public repository demonstrates project activity but is not treated as customer or revenue proof."}
+          ]
+        },
+        "memo": {
+          "required": {
+            "company_snapshot": "PostHog is a curated public reference for developer-product sourcing.",
+            "investment_hypotheses": ["Reference profile only; not used for a live underwriting decision."],
+            "swot": {"strengths": ["Public product and founding-team sources"], "weaknesses": ["No current investment diligence in this seed"], "opportunities": ["Developer tooling"], "threats": ["Reference data can become stale"]},
+            "problem_and_product": "See cited public product source.",
+            "traction_kpis": "Not used as a live investment metric."
+          },
+          "optional_or_flagged": {"team_and_history": "Publicly sourced reference", "cap_table": "Not applicable"}
+        },
+        "adversarial_view": {"challenges": ["This mature public company is included to demonstrate sourced evidence, not to imply an investable pre-seed opportunity."]},
+        "portfolio_check": {"overlap": true, "note": "Developer-tools overlap is informational only for this reference."},
+        "verdict": "review",
+        "amount_recommended": 0
+      }
+    }
+  },
+  {
+    "company_id": "ref-modal",
+    "founder_id": "ref-erik-bernhardsson",
+    "company_name": "Modal",
+    "profile": {
+      "founder_name": "Erik Bernhardsson",
+      "founder_role": "Co-founder",
+      "photo_url": "https://avatars.githubusercontent.com/u/1027979?v=4",
+      "founder_background": "Modal's official company page identifies Erik Bernhardsson and Akshat Bubna as founders.",
+      "founder_affiliations": ["Modal"],
+      "founder_ai_read": "Curated public reference: founder identity is grounded in the cited company source; no portrait or personal history was inferred from a name search.",
+      "team_members": [
+        {
+          "name": "Akshat Bubna",
+          "role": "Co-founder",
+          "photo_url": "https://avatars.githubusercontent.com/u/5786378?v=4",
+          "background": "Named as a Modal founder on the official company page.",
+          "affiliations": ["Modal"],
+          "ai_read": "Curated public reference: identity is grounded in the cited company source."
+        }
+      ],
+      "sector": "AI infrastructure",
+      "stage": "Public reference company",
+      "geography": "Public company",
+      "website": "https://modal.com",
+      "reference_profile": true,
+      "reference_label": "Curated public reference — not a current investment recommendation"
+    },
+    "signal": {
+      "founder_id": "ref-erik-bernhardsson",
+      "company_id": "ref-modal",
+      "deck_claims": [
+        {
+          "field": "team",
+          "value": "Erik Bernhardsson and Akshat Bubna founded Modal.",
+          "source_slide": 1
+        },
+        {
+          "field": "problem_product",
+          "value": "Modal provides a developer cloud platform for generative AI, model fine-tuning, inference, sandboxes, batch processing, and deployment.",
+          "source_slide": 2
+        },
+        {
+          "field": "market_size",
+          "value": "AI infrastructure and developer cloud are the relevant categories. This reference intentionally includes no standalone TAM figure; live diligence must derive a current market basis.",
+          "source_slide": 3
+        },
+        {
+          "field": "traction",
+          "value": "The official company page provides product and technology context; this seed makes no customer, revenue, or valuation claim.",
+          "source_slide": 4
+        }
+      ],
+      "public_signals": {
+        "github": {"repos": 0, "commit_consistency_score": 0.0, "longevity_months": 0},
+        "devpost_hn": {"launches": 0, "total_upvotes": 0},
+        "arxiv": {"papers": 0}
+      },
+      "sourcing_channel": "outbound",
+      "cold_start_flag": false
+    },
+    "sources": [
+      {
+        "type": "company_website",
+        "title": "Modal website",
+        "url": "https://modal.com",
+        "excerpt": "Official company site.",
+        "favicon_url": "https://avatars.githubusercontent.com/u/88658467?v=4",
+        "source": "Modal",
+        "page": null,
+        "retrieved_at": "2026-07-18T00:00:00+00:00"
+      },
+      {
+        "type": "public_reference",
+        "title": "public_reference_1 · Modal company page",
+        "url": "https://modal.com/company",
+        "excerpt": "Official company page identifies Erik Bernhardsson and Akshat Bubna as founders and describes Modal's developer-cloud technology.",
+        "source": "Modal",
+        "page": 1,
+        "retrieved_at": "2026-07-18T00:00:00+00:00"
+      },
+      {
+        "type": "public_reference",
+        "title": "public_reference_2 · Modal product scope",
+        "url": "https://modal.com/company",
+        "excerpt": "Official company description of the developer cloud platform and workloads it supports.",
+        "source": "Modal",
+        "page": 2,
+        "retrieved_at": "2026-07-18T00:00:00+00:00"
+      },
+      {
+        "type": "public_reference",
+        "title": "public_reference_3 · market-scope note",
+        "url": "https://modal.com/company",
+        "excerpt": "No standalone market-size study is embedded in this curated reference; the live validator must establish a current sizing basis.",
+        "source": "FounderScore curation note",
+        "page": 3,
+        "retrieved_at": "2026-07-18T00:00:00+00:00"
+      },
+      {
+        "type": "public_reference",
+        "title": "public_reference_4 · commercial-evidence note",
+        "url": "https://modal.com/company",
+        "excerpt": "This reference contains no customer, revenue, or valuation claim.",
+        "source": "FounderScore curation note",
+        "page": 4,
+        "retrieved_at": "2026-07-18T00:00:00+00:00"
+      }
+    ],
+    "analysis": {
+      "verdict": "review",
+      "multi_axis": {
+        "founder_axis": {
+          "score": 84,
+          "trend": "stable",
+          "rationale": "This is a curated public reference, not a live applicant. The company source establishes the founders and a technical developer-cloud company, but it does not replace a current personal diligence review.",
+          "citations": ["public_reference_1"]
+        },
+        "market_axis": {
+          "rating": "bullish",
+          "trend": "improving",
+          "rationale": "AI infrastructure and developer cloud are relevant growth categories, but this seed intentionally avoids embedding a stale market-size number. A live memo must independently size the category and its competitive dynamics.",
+          "citations": ["public_reference_3"]
+        },
+        "idea_vs_market_axis": {
+          "rating": "bullish",
+          "trend": "stable",
+          "rationale": "The company page describes a developer cloud supporting AI and compute workloads. This is product context only; it is not a claim of current early-stage product-market fit.",
+          "citations": ["public_reference_2"]
+        },
+        "founder_score": {"value": 84, "confidence_interval": 12, "trend": "stable"}
+      },
+      "thesis": {
+        "thesis_match": false,
+        "match_type": "exact",
+        "rationale": "Reference company only: excluded from the current pre-seed decision thesis."
+      },
+      "diligence_memo": {
+        "diligence": {"tavily_sources_checked": [], "flagged_claims": [], "memory_update": false},
+        "trust": {
+          "claim_trust": [
+            {"claim": "team", "confidence": "high", "evidence": "The official company page names the founders."},
+            {"claim": "problem_product", "confidence": "high", "evidence": "The official company page describes the product scope."},
+            {"claim": "market_size", "confidence": "low", "evidence": "No independent current sizing study is embedded in this reference seed."},
+            {"claim": "traction", "confidence": "low", "evidence": "No customer, revenue, or valuation claim is made in this seed."}
+          ]
+        },
+        "memo": {
+          "required": {
+            "company_snapshot": "Modal is a curated public reference for AI-infrastructure sourcing.",
+            "investment_hypotheses": ["Reference profile only; not used for a live underwriting decision."],
+            "swot": {"strengths": ["Official product and founding-team source"], "weaknesses": ["No current investment diligence in this seed"], "opportunities": ["AI infrastructure"], "threats": ["Reference data can become stale"]},
+            "problem_and_product": "See cited official company source.",
+            "traction_kpis": "Not used as a live investment metric."
+          },
+          "optional_or_flagged": {"team_and_history": "Publicly sourced reference", "cap_table": "Not applicable"}
+        },
+        "adversarial_view": {"challenges": ["This mature public company is included to demonstrate sourced evidence, not to imply an investable pre-seed opportunity."]},
+        "portfolio_check": {"overlap": false, "note": "No configured portfolio overlap is evaluated for this reference."},
+        "verdict": "review",
+        "amount_recommended": 0
+      }
+    }
+  }
+]

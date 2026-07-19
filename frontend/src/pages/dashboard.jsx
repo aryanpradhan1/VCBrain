@@ -104,6 +104,7 @@ function Row({ opp }) {
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-[15px] font-semibold tracking-tight">{opp.company_name}</span>
             <Badge variant={verdictMeta[opp.verdict].variant}>{verdictMeta[opp.verdict].label}</Badge>
+            {opp.enrichment?.reference_profile && <Badge variant="outline" title={opp.enrichment.reference_label}>Reference</Badge>}
             <ChannelBadge channel={opp.sourcing_channel} compact />
             {opp.cold_start_flag && <ColdStartBadge compact />}
             {opp.enrichment && (

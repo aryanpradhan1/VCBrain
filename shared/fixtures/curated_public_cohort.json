@@ -1,0 +1,139 @@
+[
+  {
+    "company_id": "ref-supabase",
+    "founder_id": "ref-paul-copplestone",
+    "company_name": "Supabase",
+    "website": "https://supabase.com",
+    "yc_url": "https://www.ycombinator.com/companies/supabase",
+    "logo_url": "https://bookface-images.s3.us-west-2.amazonaws.com/logos/07c5442909fdf02d563ce57187c8e2c4e615d016.png",
+    "sector": "Developer tools",
+    "batch": "Y Combinator · S20",
+    "geography": "San Francisco · remote",
+    "problem": "Developers need production database, authentication, storage, realtime, and API infrastructure without assembling every primitive themselves.",
+    "solution": "An open-source Postgres development platform combining database, auth, storage, realtime streams, generated APIs, and a web interface.",
+    "traction": "YC lists Supabase as active; this reference uses the public company profile as product and team evidence, not as a current underwriting package.",
+    "market": {
+      "tam": "$161B", "sam": "$24.17B", "som": "$120.9M",
+      "basis": "TAM uses Gartner's 2026 DBMS forecast. SAM uses Fortune Business Insights' 2025 cloud-database estimate. SOM is an illustrative 0.5% share of SAM—not company guidance.",
+      "url": "https://www.gartner.com/en/documents/7229830",
+      "secondary_url": "https://www.fortunebusinessinsights.com/cloud-database-market-110240"
+    },
+    "competitors": ["Firebase", "Neon", "PlanetScale", "AWS RDS"],
+    "founder_score": 91,
+    "market_rating": "bullish",
+    "idea_rating": "bullish",
+    "founders": [
+      {"name": "Paul Copplestone", "role": "Founder & CEO", "avatar": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/d8e9228a74c698fae602238ea69bf4699490a5e7.jpg", "background": "Founder and CEO of Supabase.", "affiliations": ["Supabase", "Y Combinator · S20"]},
+      {"name": "Ant Wilson", "role": "Founder & CTO", "avatar": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/7894aeaa75df52968edeaadd9115e60b84aeb442.jpg", "background": "Founder and CTO of Supabase.", "affiliations": ["Supabase", "Y Combinator · S20"]}
+    ]
+  },
+  {
+    "company_id": "ref-replicate",
+    "founder_id": "ref-ben-firshman",
+    "company_name": "Replicate",
+    "website": "https://replicate.com",
+    "yc_url": "https://www.ycombinator.com/companies/replicate",
+    "logo_url": "https://bookface-images.s3.us-west-2.amazonaws.com/logos/d44485fdaf1e0a4a6b260481cb8570a2fe17309c.png",
+    "sector": "AI infrastructure",
+    "batch": "Y Combinator · W20",
+    "geography": "San Francisco",
+    "problem": "Software teams need to run and customize machine-learning models without becoming GPU infrastructure specialists.",
+    "solution": "A cloud platform and API for running, fine-tuning, and deploying open-source machine-learning models.",
+    "traction": "YC identifies Replicate as a W20 company and documents its founders' prior Docker, Spotify, and machine-learning infrastructure experience.",
+    "market": {
+      "tam": "$121.74B", "sam": "$12.17B", "som": "$60.9M",
+      "basis": "TAM uses Grand View Research's 2025 cloud-AI estimate. SAM assumes 10% is accessible model-serving infrastructure; SOM assumes 0.5% of SAM. Both are explicit model assumptions.",
+      "url": "https://www.grandviewresearch.com/industry-analysis/cloud-ai-market-report"
+    },
+    "competitors": ["Modal", "Baseten", "AWS SageMaker", "Hugging Face"],
+    "founder_score": 90,
+    "market_rating": "bullish",
+    "idea_rating": "bullish",
+    "founders": [
+      {"name": "Ben Firshman", "role": "Founder", "avatar": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/6368e7ef32404188b9649557032af9a2ba4c9625.jpg", "background": "Former Docker product leader and creator of Docker Compose; YC describes him as a four-time founder.", "affiliations": ["Replicate", "Docker", "Docker Compose", "Y Combinator · W20"]},
+      {"name": "Andreas Jansson", "role": "Founder", "avatar": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/0ef030fe6748a13d137bd184875dff315f2a04b7.jpg", "background": "Built research tools and infrastructure at Spotify; YC reports a PhD in machine learning for music.", "affiliations": ["Replicate", "Spotify", "PhD · machine learning", "Y Combinator · W20"]}
+    ]
+  },
+  {
+    "company_id": "ref-hanji",
+    "founder_id": "ref-david-yu",
+    "company_name": "Hanji",
+    "website": "https://hanji.dev",
+    "yc_url": "https://www.ycombinator.com/companies/hanji",
+    "logo_url": "https://bookface-images.s3.us-west-2.amazonaws.com/logos/19699a721436c3c75bd58750e8c178623eb67950.png",
+    "sector": "AI · documents",
+    "batch": "Y Combinator · S25",
+    "geography": "San Francisco",
+    "problem": "Healthcare, insurance, and government teams struggle to turn complex documents into reliable structured data for AI workflows.",
+    "solution": "An agentic document platform that converts complex files into structured, AI-ready data.",
+    "traction": "YC reports that the team previously built YouLearn, an AI tutor used by millions of students; the reference treats this as accelerator-reported evidence.",
+    "market": {
+      "tam": "$10.57B", "sam": "$1.06B", "som": "$10.6M",
+      "basis": "TAM uses Fortune Business Insights' 2025 intelligent-document-processing estimate. SAM assumes 10% in initial regulated verticals; SOM assumes 1% of SAM. These are FounderScore assumptions.",
+      "url": "https://www.fortunebusinessinsights.com/intelligent-document-processing-market-108590"
+    },
+    "competitors": ["Reducto", "Unstructured", "Azure Document Intelligence", "Google Document AI"],
+    "founder_score": 84,
+    "market_rating": "bullish",
+    "idea_rating": "bullish",
+    "founders": [
+      {"name": "David Yu", "role": "Co-founder & CEO", "avatar": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/0e871281da6dbfea109ee577cd6d924f6ce37f41.jpg", "background": "Previously founded YouLearn and led technology and marketing at TWA, according to YC.", "affiliations": ["Hanji", "YouLearn", "TWA", "Y Combinator · S25"]},
+      {"name": "Achyut Krishna Byanjankar", "role": "Co-founder & CTO", "avatar": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/021e068c731c3c17e10c53ba298865ff50b85fc5.jpg", "background": "Computer-science background at Michigan State University and prior software engineering internship at Evitar Labs, according to YC.", "affiliations": ["Hanji", "Michigan State University", "Evitar Labs", "Y Combinator · S25"]},
+      {"name": "Soami Kapadia", "role": "Co-founder", "avatar": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/375f4df429c0f5a76d4c796c8acec078e3adc803.jpg", "background": "Previously interned at Groq and created a public open-source project, according to YC.", "affiliations": ["Hanji", "Groq", "Open source", "Y Combinator · S25"]}
+    ]
+  },
+  {
+    "company_id": "ref-light-anchor",
+    "founder_id": "ref-chase-kim",
+    "company_name": "Light Anchor",
+    "website": "https://lightanchor.ai",
+    "yc_url": "https://www.ycombinator.com/companies/light-anchor",
+    "logo_url": "https://bookface-images.s3.us-west-2.amazonaws.com/logos/eb4c89b76a1dd62a719129d90278d72c0191200f.png",
+    "sector": "AI · commerce",
+    "batch": "Y Combinator · P26",
+    "geography": "San Francisco",
+    "problem": "Consumer brands are constrained by manual coordination across merchandising, inventory, support, and growth operations.",
+    "solution": "A shared agent platform that operates and experiments with AI-run consumer brands across core business functions.",
+    "traction": "YC states that Light Anchor operates a flagship brand and multiple experiment stores; this remains accelerator-reported rather than independently audited traction.",
+    "market": {
+      "tam": "$1.23T", "sam": "$12.34B", "som": "$12.3M",
+      "basis": "TAM is 2025 U.S. retail e-commerce sales reported by the Census Bureau. SAM assumes 1% of GMV maps to addressable operating software/services; SOM assumes 0.1% of SAM. This is highly assumption-sensitive.",
+      "url": "https://www2.census.gov/retail/releases/historical/ecomm/25q4.pdf"
+    },
+    "competitors": ["Shopify ecosystem", "Amazon aggregators", "AI commerce agents", "Brand operators"],
+    "founder_score": 82,
+    "market_rating": "bullish",
+    "idea_rating": "neutral",
+    "founders": [
+      {"name": "Chase Kim", "role": "Co-founder", "avatar": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/bb88b67d42bf97fc4bc1a8618010477367717429.jpg", "background": "Previously at Sendbird, according to YC.", "affiliations": ["Light Anchor", "Sendbird", "Y Combinator · P26"]},
+      {"name": "Sangha Park", "role": "Co-founder", "avatar": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/25a5cef0ebb40ee7cb3c9fbd7b72f931c7c625a5.jpg", "background": "Previously at Sendbird and studied computer science at Brown, according to YC.", "affiliations": ["Light Anchor", "Sendbird", "Brown University · CS", "Y Combinator · P26"]}
+    ]
+  },
+  {
+    "company_id": "ref-luel",
+    "founder_id": "ref-william-namgyal",
+    "company_name": "Luel",
+    "website": "https://luel.ai",
+    "yc_url": "https://www.ycombinator.com/companies/luel",
+    "logo_url": "https://bookface-images.s3.us-west-2.amazonaws.com/logos/d5196deb49c04ebfc1d1aa2a59702838130d1776.png",
+    "sector": "AI · data infrastructure",
+    "batch": "Y Combinator · W26",
+    "geography": "San Francisco",
+    "problem": "Frontier AI teams need rights-cleared, high-signal multimodal training data with traceable consent and provenance.",
+    "solution": "A sourcing and licensing platform for bespoke and off-the-shelf multimodal training datasets with an auditable rights trail.",
+    "traction": "YC describes a 12-person active company and a global contributor network; customer and revenue claims are not included in this reference.",
+    "market": {
+      "tam": "$3.39B", "sam": "$678M", "som": "$6.8M",
+      "basis": "TAM uses 360iResearch's 2025 AI-training-dataset estimate. SAM assumes 20% for rights-cleared multimodal enterprise data; SOM assumes 1% of SAM. These are explicit model assumptions.",
+      "url": "https://www.360iresearch.com/library/intelligence/ai-training-dataset"
+    },
+    "competitors": ["Scale AI", "Appen", "Defined.ai", "Data licensing brokers"],
+    "founder_score": 80,
+    "market_rating": "bullish",
+    "idea_rating": "neutral",
+    "founders": [
+      {"name": "William Namgyal", "role": "Co-founder & CEO", "avatar": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/6e57c7a45407d2a26f2e0c990b6e65cda2294de6.jpg", "background": "YC describes him as a two-time founding engineer and Berkeley M.E.T. dropout.", "affiliations": ["Luel", "UC Berkeley · M.E.T.", "Founding engineering", "Y Combinator · W26"]},
+      {"name": "Inigo Lenderking", "role": "Co-founder & COO", "avatar": "https://bookface-images.s3.us-west-2.amazonaws.com/avatars/0cf0de085b45825602aa22a95a7785ab3e558ae2.jpg", "background": "YC describes him as a former machine-learning researcher and Berkeley computer-science dropout.", "affiliations": ["Luel", "UC Berkeley · CS", "Machine-learning research", "Y Combinator · W26"]}
+    ]
+  }
+]
