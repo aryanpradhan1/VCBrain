@@ -43,7 +43,7 @@ export function AgentPipeline({ trace, className }) {
           const Icon = agentIcons[step.agent] ?? Brain
           const ai = step.kind === "ai"
           return (
-            <li key={step.agent} className="grid grid-cols-[30px_minmax(118px,0.8fr)_minmax(0,2fr)_44px] items-center gap-3 px-4 py-3.5 sm:grid-cols-[30px_148px_minmax(0,2fr)_52px]">
+            <li key={`${step.agent}-${index}`} className="grid grid-cols-[30px_minmax(118px,0.8fr)_minmax(0,2fr)_44px] items-center gap-3 px-4 py-3.5 sm:grid-cols-[30px_148px_minmax(0,2fr)_52px]">
               <span className={cn("flex size-7 items-center justify-center rounded-md border", ai ? "border-violet-200 bg-violet-50 text-violet-700" : "border-slate-200 bg-slate-50 text-slate-600")}>
                 <Icon className="size-3.5" strokeWidth={2} />
               </span>
