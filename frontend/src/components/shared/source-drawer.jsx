@@ -12,10 +12,11 @@ import {
   X,
 } from "lucide-react"
 import { assetUrl } from "@/lib/api"
+import { SourceMark } from "@/components/shared/company-mark"
 
 // Every citation in the product opens here — sources always lead somewhere.
-// Content is a faithful dummy of what the real pipeline stores (deck slide
-// extract, repo stats, interview transcript, press item), never a dead end.
+// Content reflects what the pipeline stores (deck slide extract, repo stats,
+// interview transcript, press item), never a dead end or simulated evidence.
 
 const SourceContext = createContext({ open: () => {} })
 export const useSources = () => useContext(SourceContext)
@@ -41,29 +42,12 @@ const typeMeta = {
   generic: { icon: FileText, label: "Source" },
 }
 
-function DeckSlide({ citation, opp }) {
+function MissingDeckPreview({ citation }) {
   const slideNum = citation.match(/slide (\d+)/i)?.[1] ?? "—"
-  const claim = citation.split(/:\s(.+)/)[1] ?? citation
   return (
-    <div>
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
-          <span className="text-xs font-semibold">{opp?.company_name} — pitch deck</span>
-          <span className="text-[10px] text-muted-foreground tabular-nums">slide {slideNum}</span>
-        </div>
-        <div className="space-y-3 p-5">
-          <div className="text-lg font-semibold tracking-tight capitalize">{claim.split(/[,;—]/)[0]}</div>
-          <div className="flex items-end gap-1.5 pt-1">
-            {[34, 55, 42, 70, 88].map((h, i) => (
-              <div key={i} className="w-8 rounded-t-[4px] bg-sky-200" style={{ height: h * 0.7 }} />
-            ))}
-          </div>
-          <p className="text-xs leading-relaxed text-slate-500">"{claim}"</p>
-        </div>
-      </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">
-        Extracted by Signal Intake from the uploaded PDF — stored as a structured claim, never the raw page.
-      </p>
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="text-sm font-semibold">Slide {slideNum} preview unavailable</div>
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">The claim still references this uploaded slide, but a rendered preview was not retained. No substitute chart or simulated slide is shown.</p>
     </div>
   )
 }
@@ -169,12 +153,17 @@ function StructuredSource({ record }) {
 }
 
 function GenericCard({ citation }) {
+  const urls = Array.from(new Set(String(citation).match(/https?:\/\/[^\s,;)]+/g) ?? []))
+  const summary = String(citation)
+    .replace(/\s*Sources?:\s*https?:\/\/\S+(?:\s*[;,|]\s*https?:\/\/\S+)*/gi, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 text-[13px] leading-relaxed shadow-sm">
-      {citation}
-      <p className="mt-2 text-[11px] text-muted-foreground">
-        Source-tagged entry in the Memory layer — timestamped and deduplicated at intake.
-      </p>
+      <p>{summary}</p>
+      {urls.length > 0 && <div className="mt-4 border-t border-slate-100 pt-3"><div className="mb-2 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">Referenced sources</div><div className="flex flex-wrap gap-2">{urls.map((url, index) => { const host = (() => { try { return new URL(url).hostname.replace(/^www\./, "") } catch { return "Source" } })(); return <a key={url} href={url} target="_blank" rel="noreferrer" title={`Open ${host}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-white"><SourceMark source={{ url }} className="size-3.5" />{host}<ExternalLink className="size-3 text-slate-400" /></a> })}</div></div>}
+      <p className="mt-3 text-[11px] text-muted-foreground">Bounded evidence retained with the claim; full pages are not stored.</p>
     </div>
   )
 }
@@ -213,7 +202,7 @@ export function SourceDrawerProvider({ children }) {
                   </span>
                   <div className="leading-tight">
                     <div className="text-sm font-semibold">{meta.label}</div>
-                    <div className="text-[11px] text-muted-foreground">Evidence trail · Memory layer</div>
+                  <div className="text-[11px] text-muted-foreground">Evidence trail</div>
                   </div>
                 </div>
                 <button
@@ -225,7 +214,7 @@ export function SourceDrawerProvider({ children }) {
               </div>
 
               {source.record ? <StructuredSource record={source.record} /> : <>
-                {type === "deck" && <DeckSlide citation={source.citation} opp={source.opp} />}
+                {type === "deck" && <MissingDeckPreview citation={source.citation} />}
                 {type === "github" && <GithubCard opp={source.opp} />}
                 {type === "interview" && <InterviewCard citation={source.citation} />}
                 {type === "news" && <NewsCard source={source} />}

@@ -35,13 +35,6 @@ List all opportunities with optional filters:
 - `?query=technical founder, AI infra` — natural language search
 - `?thesis_filter=true` — only thesis matches
 
-#### 5. `POST /founders/{founder_id}/interview/start`
-Starts C's adaptive five-question interview and returns the first question.
-
-#### 6. `POST /founders/{founder_id}/interview/respond`
-Records `{ "answer": "..." }`, returns the next adaptive question, and on
-completion persists the response-pattern result and recomputes the Founder Score.
-
 ### How It Works
 
 1. **Startup:** Loads fixtures from `/shared/fixtures/` and pre-scores them
@@ -54,25 +47,28 @@ completion persists the response-pattern result and recomputes the Founder Score
 
 ### Storage
 
-Active opportunities and interview sessions are cached in memory for the demo.
-Gap findings, completed interview results, and event-triggered score history are
-persisted to SQLite at `backend/api/founderscore.sqlite3` (override with
-`FOUNDER_SCORE_DB_PATH`).
+Applications, analysis results, and interview sessions persist through the API's
+SQLite application store under `backend/data/`; the in-memory maps are only a
+runtime cache for fast endpoint reads.
 
 ### Role C Integration
 
 Claim validation, per-claim Trust Score, Memo Synthesizer, Adversarial View,
 Portfolio Check, and the Interview Agent call Role C's package directly. Diligence
-is computed once when fixtures load and cached so dashboard refreshes do not repeat
-external provider calls.
+is run during processing, never on dashboard refreshes.
 
 ### Running the API
 
 ```bash
 cd /Users/aryanpradhan/Downloads/VCBrain/backend/api
 
-# Set API key (required for scoring)
+# Required for scoring; Tavily is used for bounded public evidence checks.
 export OPENAI_API_KEY='your-key-here'
+export TAVILY_API_KEY='your-key-here'
+
+# Optional: enrich an exact LinkedIn URL that a founder explicitly supplied.
+# No LinkedIn login, credentials, or name-based people search is used.
+export PEOPLE_DATA_LABS_API_KEY='your-key-here'
 
 # Start server
 python3 main.py
@@ -114,6 +110,15 @@ pydantic>=2.0.0
 ```
 
 Plus scoring module dependencies (openai, pydantic).
+
+### Optional profile enrichment
+
+When `PEOPLE_DATA_LABS_API_KEY` is set, the intake service can look up an **exact
+LinkedIn `/in/` URL supplied in the application** using People Data Labs. A returned
+record is accepted only if its LinkedIn identity matches that submitted URL. The app
+stores only a small display-safe subset (portrait URL, headline/current role, provider
+status); it does not store the provider's full person record. The result is cached on
+the application so reprocessing does not repeat a billable lookup.
 
 ### File Structure
 

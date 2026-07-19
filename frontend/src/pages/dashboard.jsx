@@ -16,13 +16,14 @@ import { AxisDots, ChannelBadge, ColdStartBadge } from "@/components/shared/chip
 import { Page, stagger } from "@/components/shared/page"
 import { ScoreBadge } from "@/components/shared/score-badge"
 import { SignalIcons } from "@/components/shared/signal-chips"
+import { CompanyMark } from "@/components/shared/company-mark"
 import {
   fmtAmount,
   trustTally,
   verdictMeta,
 } from "@/components/shared/semantics"
 import { EmptyState, ErrorBanner } from "@/components/shared/states"
-import { listOpportunities } from "@/lib/api"
+import { assetUrl, listOpportunities } from "@/lib/api"
 import { useAsync } from "@/lib/use-async"
 import { cn } from "@/lib/utils"
 import { pitchOf } from "@/fixtures/opportunities"
@@ -79,7 +80,7 @@ function FounderMarks({ founders }) {
     <span className="flex -space-x-1.5" title={founders.map((founder) => founder.name).join(", ")}>
       {founders.slice(0, 3).map((founder, index) => (
         founder.avatar ? (
-          <img key={founder.name} src={founder.avatar} alt={founder.name} className="size-6 rounded-full border-2 border-card object-cover" style={{ zIndex: 3 - index }} />
+          <img key={founder.name} src={assetUrl(founder.avatar)} alt={founder.name} className="size-6 rounded-full border-2 border-card object-cover" style={{ zIndex: 3 - index }} />
         ) : (
           <span key={founder.name} className="flex size-6 items-center justify-center rounded-full border-2 border-card bg-slate-800 text-[9px] font-bold text-white" style={{ zIndex: 3 - index }}>
             {founder.name?.[0] || "F"}
@@ -97,10 +98,7 @@ function Row({ opp }) {
         to={`/opportunities/${opp.company_id}`}
         className="group grid gap-3 px-4 py-4 transition-colors hover:bg-slate-50/70 sm:grid-cols-[minmax(0,1fr)_126px] sm:gap-6 sm:px-5 lg:grid-cols-[minmax(0,1fr)_134px_126px]">
         <div className="flex min-w-0 gap-3">
-        <span
-          className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-sm font-bold text-white">
-          {opp.company_name[0]}
-        </span>
+        <CompanyMark name={opp.company_name} sources={opp.sources} className="size-10 shrink-0 rounded-lg text-sm" imageClassName="size-10 shrink-0 rounded-lg border border-border bg-white p-1" />
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-[15px] font-semibold tracking-tight">{opp.company_name}</span>

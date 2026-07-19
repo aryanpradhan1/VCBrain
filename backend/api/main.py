@@ -1,10 +1,6 @@
 """FounderScore API: persistent applications around the locked agent contracts."""
 from __future__ import annotations
 
-import os
-import sqlite3
-import sys
-from datetime import datetime, timezone
 import json
 import sys
 import time
@@ -14,37 +10,11 @@ from typing import Any, Literal, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-# C owns the provider credentials. Load them before importing scoring, whose OpenAI
-# client is initialized at module import time. ``override=True`` prevents a stale
-# shell placeholder from masking the project-local configuration.
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).resolve().parents[1] / "diligence_memo" / ".env", override=True)
-
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-# Import scoring module
-from backend.scoring import (
-    score_all_axes,
-    evaluate_thesis_fit,
-    parse_natural_language_query,
-    match_opportunity,
-    calculate_founder_score_from_axes,
-    MultiAxisOutput,
-    ThesisOutput,
-)
-
-# Import C's diligence/trust/memo pipeline -- real calls, not ad-hoc mocks
-from backend.diligence_memo import (
-    ClaimValidator,
-    DiligenceMemoPipeline,
-    InterviewAgent,
-    InterviewSession,
-    MemoSynthesizer,
-)
 from backend.diligence_memo import ClaimValidator, DiligenceMemoPipeline, MemoSynthesizer
 from backend.diligence_memo.clients import OpenAIReasoningClient, TavilySearchClient
 from backend.diligence_memo.interview import InterviewAgent, InterviewSession
@@ -59,7 +29,7 @@ from backend.api.document_intake import (
     extract_document,
 )
 from backend.api.presentation import build_enrichment, concise_memo, relevant_sources
-from backend.api.source_enrichment import fetch_site_metadata, github_profile_signal, search_press, submitted_link_sources, valid_public_url
+from backend.api.source_enrichment import enrich_submitted_people, fetch_site_metadata, github_profile_signal, search_press, submitted_link_sources, valid_public_url
 from backend.api.store import ApplicationStore
 
 
@@ -70,6 +40,7 @@ MEDIA_ROOT = DATA_ROOT / "media"
 FIXTURE_ROOT = ROOT / "shared" / "fixtures"
 MAX_DOCUMENT_BYTES = 25 * 1024 * 1024
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
+MAX_TEAM_MEMBERS = 8
 
 for directory in (UPLOAD_ROOT, MEDIA_ROOT):
     directory.mkdir(parents=True, exist_ok=True)
@@ -159,6 +130,7 @@ class SourceRecord(BaseModel):
     url: str
     excerpt: str = ""
     image_url: str | None = None
+    favicon_url: str | None = None
     preview_url: str | None = None
     source: str = ""
     page: int | None = None
@@ -214,32 +186,6 @@ class DecisionRequest(BaseModel):
     decision: Literal["approve", "review", "decline"]
 
 
-class InterviewAnswerRequest(BaseModel):
-    answer: str
-
-
-class InterviewProgressResponse(BaseModel):
-    question: Optional[str] = None
-    question_number: int
-    total_questions: int
-    complete: bool
-
-
-# ==================== In-Memory Storage (Demo) ====================
-# In production, this would be SQLite/Postgres
-
-# Keyed by company_id (not a synthetic id) -- the frontend links via
-# `/opportunities/${opp.company_id}` (see frontend/src/pages/dashboard.jsx), so the
-# lookup key here must match that exactly.
-OPPORTUNITIES_DB: Dict[str, Dict[str, Any]] = {}
-FOUNDERS_DB: Dict[str, Dict[str, Any]] = {}
-INTERVIEW_SESSIONS: Dict[str, InterviewSession] = {}
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-FIXTURES_DIR = PROJECT_ROOT / "shared" / "fixtures"
-MEMORY_DB_PATH = Path(
-    os.getenv("FOUNDER_SCORE_DB_PATH", str(Path(__file__).with_name("founderscore.sqlite3")))
-)
 class ApplicationSubmission(BaseModel):
     company_id: str
     founder_id: str
@@ -315,6 +261,34 @@ def _check_amount(check: str) -> int:
     return {"$50K": 50_000, "$100K": 100_000, "$250K": 250_000}[check]
 
 
+def _parse_team_members(value: str) -> list[dict[str, str]]:
+    """Keep optional cofounder identity records small and explicitly supplied."""
+    if not value.strip():
+        return []
+    try:
+        raw_members = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="Team profiles must be valid form data.") from exc
+    if not isinstance(raw_members, list) or len(raw_members) > MAX_TEAM_MEMBERS:
+        raise HTTPException(status_code=422, detail=f"Add at most {MAX_TEAM_MEMBERS} team profiles.")
+    members: list[dict[str, str]] = []
+    for raw in raw_members:
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()[:120]
+        if not name:
+            continue
+        member = {
+            "name": name,
+            "role": str(raw.get("role") or "Co-founder").strip()[:120],
+            "linkedin": valid_public_url(str(raw.get("linkedin") or "")),
+            "github": valid_public_url(str(raw.get("github") or "")),
+            "arxiv": valid_public_url(str(raw.get("arxiv") or "")),
+        }
+        members.append({key: item for key, item in member.items() if item})
+    return members
+
+
 def _engine_thesis(config: dict[str, Any]) -> dict[str, Any]:
     """Translate the investor-facing settings into the deterministic engine's shape."""
     amount = _check_amount(config["check"])
@@ -330,150 +304,6 @@ def _engine_thesis(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _memory_connection() -> sqlite3.Connection:
-    connection = sqlite3.connect(MEMORY_DB_PATH)
-    connection.row_factory = sqlite3.Row
-    return connection
-
-
-def initialize_memory() -> None:
-    """Create the persistent Memory tables owned by the API glue."""
-    MEMORY_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with _memory_connection() as connection:
-        connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS gap_findings (
-                company_id TEXT NOT NULL,
-                founder_id TEXT NOT NULL,
-                claim TEXT NOT NULL,
-                issue TEXT NOT NULL,
-                severity TEXT NOT NULL,
-                recorded_at TEXT NOT NULL,
-                PRIMARY KEY (company_id, claim, issue)
-            );
-            CREATE TABLE IF NOT EXISTS interview_results (
-                founder_id TEXT PRIMARY KEY,
-                questions_asked TEXT NOT NULL,
-                response_pattern TEXT NOT NULL,
-                resilience_score INTEGER NOT NULL,
-                completed_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS score_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                founder_id TEXT NOT NULL,
-                value INTEGER NOT NULL,
-                confidence_interval INTEGER NOT NULL,
-                trend TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                recorded_at TEXT NOT NULL
-            );
-            """
-        )
-
-
-def persist_gap_findings(
-    company_id: str, founder_id: str, diligence_output: Dict[str, Any]
-) -> None:
-    if not diligence_output.get("memory_update"):
-        return
-    recorded_at = datetime.now(timezone.utc).isoformat()
-    rows = [
-        (
-            company_id,
-            founder_id,
-            item["claim"],
-            item["issue"],
-            item["severity"],
-            recorded_at,
-        )
-        for item in diligence_output.get("flagged_claims", [])
-    ]
-    with _memory_connection() as connection:
-        connection.executemany(
-            """
-            INSERT OR REPLACE INTO gap_findings
-                (company_id, founder_id, claim, issue, severity, recorded_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            rows,
-        )
-
-
-def _persist_interview_result(founder_id: str, result: Dict[str, Any]) -> None:
-    completed_at = datetime.now(timezone.utc).isoformat()
-    with _memory_connection() as connection:
-        connection.execute(
-            """
-            INSERT OR REPLACE INTO interview_results
-                (founder_id, questions_asked, response_pattern, resilience_score, completed_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                founder_id,
-                json.dumps(result["questions_asked"]),
-                result["response_pattern"],
-                result["resilience_score"],
-                completed_at,
-            ),
-        )
-
-
-def _traction_signal_score(signal_data: Dict[str, Any]) -> int:
-    """Deterministic raw-signal component used by the locked Founder Score formula."""
-    signals = signal_data.get("public_signals", {})
-    github = signals.get("github", {})
-    launches = signals.get("devpost_hn", {})
-    arxiv = signals.get("arxiv", {})
-    score = (
-        min(int(github.get("repos", 0)), 10) * 3
-        + round(float(github.get("commit_consistency_score", 0)) * 25)
-        + min(int(launches.get("total_upvotes", 0)), 500) // 20
-        + min(int(arxiv.get("papers", 0)), 4) * 5
-    )
-    return min(100, max(0, score))
-
-
-def _recompute_founder_score(founder_id: str, resilience_score: int) -> None:
-    founder = FOUNDERS_DB[founder_id]
-    opportunity = OPPORTUNITIES_DB[founder["company_id"]]
-    multi_axis = opportunity["multi_axis"]
-    signal_data = opportunity["signal_data"]
-    fit_scores = {"bullish": 80, "neutral": 55, "bear": 30}
-    updated_score = calculate_founder_score_from_axes(
-        founder_axis_score=multi_axis.founder_axis.score,
-        traction_signal_score=_traction_signal_score(signal_data),
-        founder_market_fit_score=fit_scores[multi_axis.idea_vs_market_axis.rating],
-        resilience_score=resilience_score,
-        cold_start=signal_data["cold_start_flag"],
-    )
-    previous_value = founder["founder_score"].value
-    updated_score.trend = (
-        "improving" if updated_score.value > previous_value else
-        "declining" if updated_score.value < previous_value else
-        "stable"
-    )
-    founder["founder_score"] = updated_score
-    multi_axis.founder_score = updated_score
-    with _memory_connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO score_history
-                (founder_id, value, confidence_interval, trend, event_type, recorded_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                founder_id,
-                updated_score.value,
-                updated_score.confidence_interval,
-                updated_score.trend,
-                "interview_completed",
-                datetime.now(timezone.utc).isoformat(),
-            ),
-        )
-
-
-def load_fixture_data():
-    """Load test fixtures into in-memory DB.
 def current_thesis_config() -> dict[str, Any]:
     return store.get_thesis(DEFAULT_THESIS_CONFIG)
 
@@ -532,44 +362,6 @@ def _analysis_for(signal: dict[str, Any], profile: dict[str, Any], traces: list[
     }
 
 
-    for fixture_name in fixtures:
-        try:
-            with (FIXTURES_DIR / fixture_name).open(encoding="utf-8") as f:
-                data = json.load(f)
-
-                company_id = data["company_id"]
-                founder_id = data["founder_id"]
-                company_name = f"Company {company_id}"  # placeholder: no module in the
-                # pipeline currently captures a real company name as a structured field
-
-                multi_axis = score_all_axes(data)
-                thesis = evaluate_thesis_fit(data)
-                diligence_memo = _diligence_pipeline.run({
-                    "company_name": company_name,
-                    "sector": data.get("sector", "Not disclosed"),
-                    "deck_claims": data.get("deck_claims", []),
-                })
-                persist_gap_findings(company_id, founder_id, diligence_memo["diligence"])
-
-                OPPORTUNITIES_DB[company_id] = {
-                    "signal_data": data,
-                    "company_name": company_name,
-                    "multi_axis": multi_axis,
-                    "thesis": thesis,
-                    "diligence_memo": diligence_memo,
-                }
-
-                FOUNDERS_DB[founder_id] = {
-                    "founder_score": multi_axis.founder_score,
-                    "company_id": company_id,
-                }
-
-        except FileNotFoundError:
-            print(f"Warning: Fixture {fixture_name} not found")
-            continue
-        except Exception as e:
-            print(f"Warning: Could not process fixture {fixture_name}: {e}")
-            continue
 def _cache_application(record: dict[str, Any]) -> None:
     if not record.get("signal") or not record.get("analysis"):
         return
@@ -615,7 +407,6 @@ def load_fixture_data() -> None:
 async def startup_event() -> None:
     print("Loading persisted applications and fixture seed data...")
     try:
-        initialize_memory()
         load_fixture_data()
         print(f"Loaded {len(OPPORTUNITIES_DB)} ready opportunities")
     except Exception as exc:
@@ -710,68 +501,6 @@ def get_founder_results(founder_id: str) -> FounderResultsResponse:
     return FounderResultsResponse(founder_score=FounderScoreResponse(**score), narrative=narrative)
 
 
-@app.post(
-    "/founders/{founder_id}/interview/start",
-    response_model=InterviewProgressResponse,
-)
-def start_interview(founder_id: str):
-    """Start or restart C's adaptive 5-question interview for this founder."""
-    if founder_id not in FOUNDERS_DB:
-        raise HTTPException(status_code=404, detail="Founder not found")
-    company_id = FOUNDERS_DB[founder_id]["company_id"]
-    claims = OPPORTUNITIES_DB[company_id]["signal_data"].get("deck_claims", [])
-    session = InterviewAgent().start(claims, max_questions=5)
-    INTERVIEW_SESSIONS[founder_id] = session
-    question = session.next_question()
-    return InterviewProgressResponse(
-        question=question,
-        question_number=1,
-        total_questions=session.max_questions,
-        complete=False,
-    )
-
-
-@app.post(
-    "/founders/{founder_id}/interview/respond",
-    response_model=InterviewProgressResponse,
-)
-def respond_to_interview(founder_id: str, request: InterviewAnswerRequest):
-    """Record an answer, adapt the next question, and persist the completed result."""
-    session = INTERVIEW_SESSIONS.get(founder_id)
-    if session is None:
-        raise HTTPException(status_code=409, detail="Interview has not been started")
-    if not request.answer.strip():
-        raise HTTPException(status_code=422, detail="Answer cannot be empty")
-    try:
-        session.record_response(request.answer)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    if len(session.responses) == session.max_questions:
-        result = session.result()
-        _persist_interview_result(founder_id, result)
-        _recompute_founder_score(founder_id, result["resilience_score"])
-        INTERVIEW_SESSIONS.pop(founder_id, None)
-        return InterviewProgressResponse(
-            question=None,
-            question_number=session.max_questions,
-            total_questions=session.max_questions,
-            complete=True,
-        )
-
-    question = session.next_question()
-    return InterviewProgressResponse(
-        question=question,
-        question_number=len(session.questions_asked),
-        total_questions=session.max_questions,
-        complete=False,
-    )
-
-
-@app.post("/opportunities/{company_id}/decision")
-def record_decision(company_id: str, request: DecisionRequest):
-    """
-    Record investment decision for an opportunity
 def _session_for(record: dict[str, Any], session_record: dict[str, Any]) -> InterviewSession:
     session = _interview_agent.start(record["signal"].get("deck_claims", []))
     session.questions_asked = list(session_record["questions"])
@@ -935,43 +664,45 @@ def _process_application(company_id: str) -> None:
         signal = signal_model.model_dump()
         traces.append({"agent": "intake", "label": "Signal Intake", "kind": "rule", "summary": f"{len(claims)} deck claims extracted; checking supplied profiles and company-specific coverage.", "ms": 1, "stage": "checking_sources"})
         store.update_processing(company_id, status="processing", signal=signal, documents=extracted, trace=traces)
-        github, github_source = github_profile_signal(record["profile"].get("github"))
+        profile, people_sources = enrich_submitted_people(record["profile"])
+        github, github_source = github_profile_signal(profile.get("github"))
         signal["public_signals"]["github"] = github
-        sources = submitted_link_sources(record["profile"])
+        sources = submitted_link_sources(profile)
+        sources.extend(people_sources)
         if github_source:
             sources.append(github_source)
-        site_source = fetch_site_metadata(record["profile"].get("website"))
+        site_source = fetch_site_metadata(profile.get("website"))
         if site_source:
             sources.append(site_source)
-        sources.extend(search_press(record["company_name"], record["profile"].get("website")))
+        sources.extend(search_press(record["company_name"], profile.get("website")))
         # A company site is commonly mentioned on the company LinkedIn result
         # rather than typed into the form. Promote only the company-matching
         # domain discovered by the bounded source scan, then retain its own
         # metadata as an auditable source for the investor view.
-        discovered_website = build_enrichment(record["profile"], signal, sources, traces).get("website")
-        if discovered_website and not record["profile"].get("website"):
-            profile = {**record["profile"], "website": discovered_website}
+        discovered_website = build_enrichment(profile, signal, sources, traces).get("website")
+        if discovered_website and not profile.get("website"):
+            profile = {**profile, "website": discovered_website}
             discovered_site_source = fetch_site_metadata(discovered_website)
             if discovered_site_source:
                 sources.append(discovered_site_source)
-            store.upsert_application(
-                company_id=company_id,
-                founder_id=record["founder_id"],
-                company_name=record["company_name"],
-                status="processing",
-                profile=profile,
-                documents=extracted,
-                sources=sources,
-                signal=signal,
-                trace=traces,
-            )
         sources.extend({
             "type": "deck", "title": item["title"], "url": document["file_url"], "excerpt": item.get("text", ""),
             "source": "Founder-uploaded document", "page": item.get("page"), "preview_url": item.get("preview_url"),
         } for item in extracted)
         traces.append({"agent": "scorer", "label": "Multi-Axis Scorer", "kind": "ai", "summary": "Scoring independent founder, market, and idea-versus-market axes.", "ms": 1, "stage": "scoring"})
         store.update_processing(company_id, status="processing", signal=signal, documents=extracted, sources=sources, trace=traces)
-        analysis = _analysis_for(signal, record["profile"], traces)
+        store.upsert_application(
+            company_id=company_id,
+            founder_id=record["founder_id"],
+            company_name=record["company_name"],
+            status="processing",
+            profile=profile,
+            documents=extracted,
+            sources=sources,
+            signal=signal,
+            trace=traces,
+        )
+        analysis = _analysis_for(signal, profile, traces)
         store.update_processing(company_id, status="ready", signal=signal, analysis=analysis, documents=extracted, sources=sources, trace=traces)
         _cache_application(store.get(company_id) or {})
     except Exception as exc:
@@ -993,9 +724,11 @@ def _refresh_existing_analysis(company_id: str) -> None:
         discovered = build_enrichment(profile, signal, record.get("sources", []), traces).get("website")
         if discovered and not profile.get("website"):
             profile["website"] = discovered
+        profile, people_sources = enrich_submitted_people(profile)
         github, github_source = github_profile_signal(profile.get("github"))
         signal["public_signals"]["github"] = github
         sources = submitted_link_sources(profile)
+        sources.extend(people_sources)
         if github_source:
             sources.append(github_source)
         site_source = fetch_site_metadata(profile.get("website"))
@@ -1039,6 +772,7 @@ def submit_application(
     sector: str = Form("", max_length=100),
     stage: str = Form("Pre-seed", max_length=60),
     geography: str = Form("", max_length=120),
+    team_members_json: str = Form("", max_length=12000),
     founder_photo: UploadFile | None = File(None),
 ) -> ApplicationSubmission:
     if not deck.filename or not allowed_filename(deck.filename):
@@ -1057,6 +791,9 @@ def submit_application(
             "arxiv": valid_public_url(arxiv), "sector": sector.strip() or "Not disclosed", "stage": stage.strip() or "Not disclosed",
             "geography": geography.strip() or "Not disclosed", "company_name": company_name.strip(),
         }
+        team_members = _parse_team_members(team_members_json)
+        if team_members:
+            profile["team_members"] = team_members
         if founder_photo and founder_photo.filename:
             photo_extension = Path(founder_photo.filename).suffix.lower() or ".jpg"
             photo_name = f"{company_id}-founder{photo_extension}"
