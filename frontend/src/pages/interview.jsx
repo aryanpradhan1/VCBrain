@@ -4,18 +4,13 @@ import { AnimatePresence, motion } from "motion/react"
 import { ArrowLeft, ArrowUp, Check } from "lucide-react"
 import confetti from "canvas-confetti"
 
+import { ErrorBanner } from "@/components/shared/states"
 import { Button } from "@/components/ui/button"
+import { respondToFounderInterview, startFounderInterview } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 // Founder-facing live interview. 4–5 adaptive questions; the resulting
 // response_pattern / resilience_score feed the backend and are NEVER shown here.
-const QUESTIONS = [
-  "Thanks for making time — this stays short. First: what's the single strongest piece of evidence that customers want what you're building?",
-  "If that evidence turned out to be weaker than you think — say the numbers don't replicate — what would you do in the following 30 days?",
-  "What's the most important thing you've changed your mind about since starting this company, and what changed it?",
-  "Who is the one hire that would most change your trajectory right now, and what's your realistic plan to get them?",
-  "Last one: what should we have asked about that we didn't? Anything you'd want an investor to weigh.",
-]
 
 function TypingDots() {
   return (
@@ -58,19 +53,28 @@ export default function Interview() {
   const [messages, setMessages] = useState([])
   const [draft, setDraft] = useState("")
   const [typing, setTyping] = useState(true)
-  const [qIndex, setQIndex] = useState(0)
+  const [progress, setProgress] = useState(null)
   const [done, setDone] = useState(false)
+  const [error, setError] = useState(null)
   const endRef = useRef(null)
 
-  // Agent "types", then asks the next question.
+  // Start C's interview session and render its first claim-specific question.
   useEffect(() => {
-    if (!typing) return
-    const t = setTimeout(() => {
-      setMessages((m) => [...m, { from: "agent", text: QUESTIONS[qIndex] }])
-      setTyping(false)
-    }, 1100 + Math.random() * 500)
-    return () => clearTimeout(t)
-  }, [typing, qIndex])
+    let active = true
+    startFounderInterview(id)
+      .then((next) => {
+        if (!active) return
+        setProgress(next)
+        setMessages(next.question ? [{ from: "agent", text: next.question }] : [])
+        setTyping(false)
+      })
+      .catch(() => {
+        if (!active) return
+        setError("Couldn't start the interview just now.")
+        setTyping(false)
+      })
+    return () => { active = false }
+  }, [id])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
@@ -92,17 +96,27 @@ export default function Interview() {
     return () => clearTimeout(t)
   }, [done])
 
-  const send = (e) => {
+  const send = async (e) => {
     e.preventDefault()
     const text = draft.trim()
     if (!text || typing || done) return
     setMessages((m) => [...m, { from: "founder", text }])
     setDraft("")
-    if (qIndex + 1 < QUESTIONS.length) {
-      setQIndex((i) => i + 1)
-      setTyping(true)
-    } else {
-      setTimeout(() => setDone(true), 700)
+    setTyping(true)
+    setError(null)
+    try {
+      const next = await respondToFounderInterview(id, text)
+      setProgress(next)
+      if (next.complete) {
+        setDone(true)
+      } else if (next.question) {
+        setMessages((m) => [...m, { from: "agent", text: next.question }])
+      }
+    } catch {
+      setError("Your answer couldn't be saved. Please try again.")
+      setDraft(text)
+    } finally {
+      setTyping(false)
     }
   }
 
@@ -117,16 +131,20 @@ export default function Interview() {
         <div className="flex-1">
           <div className="text-sm font-semibold tracking-tight">Founder interview</div>
           <div className="text-xs text-muted-foreground">
-            {done ? "Complete" : `Question ${Math.min(qIndex + 1, QUESTIONS.length)} of ${QUESTIONS.length}`}
+            {done ? "Complete" : progress ? `Question ${progress.question_number} of ${progress.total_questions}` : "Starting…"}
           </div>
         </div>
         <div className="flex gap-1">
-          {QUESTIONS.map((_, i) => (
+          {Array.from({ length: progress?.total_questions ?? 5 }, (_, i) => (
             <span
               key={i}
               className={cn(
                 "h-1 w-5 rounded-full transition-colors duration-300",
-                i < qIndex || done ? "bg-primary" : i === qIndex ? "bg-primary/40" : "bg-border"
+                done || i < (progress?.question_number ?? 1) - 1
+                  ? "bg-primary"
+                  : i === (progress?.question_number ?? 1) - 1
+                    ? "bg-primary/40"
+                    : "bg-border"
               )}
             />
           ))}
@@ -134,12 +152,13 @@ export default function Interview() {
       </header>
 
       <div className="flex-1 space-y-3 overflow-y-auto py-6">
+        {error && <ErrorBanner message={error} />}
         {messages.map((m, i) => (
           <Bubble key={i} from={m.from}>
             {m.text}
           </Bubble>
         ))}
-        {typing && (
+        {typing && !done && (
           <div className="flex justify-start">
             <div className="rounded-3xl rounded-bl-lg bg-card px-3 card-hairline">
               <TypingDots />

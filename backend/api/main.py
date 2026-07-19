@@ -7,11 +7,21 @@ Assembles all agent outputs into the shapes the frontend expects:
 - POST /opportunities/:id/decision - record decision
 """
 
+import os
+import sqlite3
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# C owns the provider credentials. Load them before importing scoring, whose OpenAI
+# client is initialized at module import time. ``override=True`` prevents a stale
+# shell placeholder from masking the project-local configuration.
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[1] / "diligence_memo" / ".env", override=True)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,12 +35,19 @@ from backend.scoring import (
     evaluate_thesis_fit,
     parse_natural_language_query,
     match_opportunity,
+    calculate_founder_score_from_axes,
     MultiAxisOutput,
     ThesisOutput,
 )
 
 # Import C's diligence/trust/memo pipeline -- real calls, not ad-hoc mocks
-from backend.diligence_memo import ClaimValidator, DiligenceMemoPipeline, MemoSynthesizer
+from backend.diligence_memo import (
+    ClaimValidator,
+    DiligenceMemoPipeline,
+    InterviewAgent,
+    InterviewSession,
+    MemoSynthesizer,
+)
 from backend.diligence_memo.clients import OpenAIReasoningClient, TavilySearchClient
 
 
@@ -149,6 +166,17 @@ class DecisionRequest(BaseModel):
     decision: Literal["approve", "review", "decline"]
 
 
+class InterviewAnswerRequest(BaseModel):
+    answer: str
+
+
+class InterviewProgressResponse(BaseModel):
+    question: Optional[str] = None
+    question_number: int
+    total_questions: int
+    complete: bool
+
+
 # ==================== In-Memory Storage (Demo) ====================
 # In production, this would be SQLite/Postgres
 
@@ -157,6 +185,13 @@ class DecisionRequest(BaseModel):
 # lookup key here must match that exactly.
 OPPORTUNITIES_DB: Dict[str, Dict[str, Any]] = {}
 FOUNDERS_DB: Dict[str, Dict[str, Any]] = {}
+INTERVIEW_SESSIONS: Dict[str, InterviewSession] = {}
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+FIXTURES_DIR = PROJECT_ROOT / "shared" / "fixtures"
+MEMORY_DB_PATH = Path(
+    os.getenv("FOUNDER_SCORE_DB_PATH", str(Path(__file__).with_name("founderscore.sqlite3")))
+)
 
 # Real diligence/memo pipeline (C's module). Built once and reused -- validate() makes a
 # Tavily search + OpenAI call per claim, so this must never run per-request.
@@ -167,6 +202,148 @@ _diligence_pipeline = DiligenceMemoPipeline(
     ),
     memo=MemoSynthesizer(),
 )
+
+
+def _memory_connection() -> sqlite3.Connection:
+    connection = sqlite3.connect(MEMORY_DB_PATH)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def initialize_memory() -> None:
+    """Create the persistent Memory tables owned by the API glue."""
+    MEMORY_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with _memory_connection() as connection:
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS gap_findings (
+                company_id TEXT NOT NULL,
+                founder_id TEXT NOT NULL,
+                claim TEXT NOT NULL,
+                issue TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                recorded_at TEXT NOT NULL,
+                PRIMARY KEY (company_id, claim, issue)
+            );
+            CREATE TABLE IF NOT EXISTS interview_results (
+                founder_id TEXT PRIMARY KEY,
+                questions_asked TEXT NOT NULL,
+                response_pattern TEXT NOT NULL,
+                resilience_score INTEGER NOT NULL,
+                completed_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS score_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                founder_id TEXT NOT NULL,
+                value INTEGER NOT NULL,
+                confidence_interval INTEGER NOT NULL,
+                trend TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                recorded_at TEXT NOT NULL
+            );
+            """
+        )
+
+
+def persist_gap_findings(
+    company_id: str, founder_id: str, diligence_output: Dict[str, Any]
+) -> None:
+    if not diligence_output.get("memory_update"):
+        return
+    recorded_at = datetime.now(timezone.utc).isoformat()
+    rows = [
+        (
+            company_id,
+            founder_id,
+            item["claim"],
+            item["issue"],
+            item["severity"],
+            recorded_at,
+        )
+        for item in diligence_output.get("flagged_claims", [])
+    ]
+    with _memory_connection() as connection:
+        connection.executemany(
+            """
+            INSERT OR REPLACE INTO gap_findings
+                (company_id, founder_id, claim, issue, severity, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+
+
+def _persist_interview_result(founder_id: str, result: Dict[str, Any]) -> None:
+    completed_at = datetime.now(timezone.utc).isoformat()
+    with _memory_connection() as connection:
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO interview_results
+                (founder_id, questions_asked, response_pattern, resilience_score, completed_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                founder_id,
+                json.dumps(result["questions_asked"]),
+                result["response_pattern"],
+                result["resilience_score"],
+                completed_at,
+            ),
+        )
+
+
+def _traction_signal_score(signal_data: Dict[str, Any]) -> int:
+    """Deterministic raw-signal component used by the locked Founder Score formula."""
+    signals = signal_data.get("public_signals", {})
+    github = signals.get("github", {})
+    launches = signals.get("devpost_hn", {})
+    arxiv = signals.get("arxiv", {})
+    score = (
+        min(int(github.get("repos", 0)), 10) * 3
+        + round(float(github.get("commit_consistency_score", 0)) * 25)
+        + min(int(launches.get("total_upvotes", 0)), 500) // 20
+        + min(int(arxiv.get("papers", 0)), 4) * 5
+    )
+    return min(100, max(0, score))
+
+
+def _recompute_founder_score(founder_id: str, resilience_score: int) -> None:
+    founder = FOUNDERS_DB[founder_id]
+    opportunity = OPPORTUNITIES_DB[founder["company_id"]]
+    multi_axis = opportunity["multi_axis"]
+    signal_data = opportunity["signal_data"]
+    fit_scores = {"bullish": 80, "neutral": 55, "bear": 30}
+    updated_score = calculate_founder_score_from_axes(
+        founder_axis_score=multi_axis.founder_axis.score,
+        traction_signal_score=_traction_signal_score(signal_data),
+        founder_market_fit_score=fit_scores[multi_axis.idea_vs_market_axis.rating],
+        resilience_score=resilience_score,
+        cold_start=signal_data["cold_start_flag"],
+    )
+    previous_value = founder["founder_score"].value
+    updated_score.trend = (
+        "improving" if updated_score.value > previous_value else
+        "declining" if updated_score.value < previous_value else
+        "stable"
+    )
+    founder["founder_score"] = updated_score
+    multi_axis.founder_score = updated_score
+    with _memory_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO score_history
+                (founder_id, value, confidence_interval, trend, event_type, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                founder_id,
+                updated_score.value,
+                updated_score.confidence_interval,
+                updated_score.trend,
+                "interview_completed",
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
 
 
 def load_fixture_data():
@@ -187,7 +364,7 @@ def load_fixture_data():
 
     for fixture_name in fixtures:
         try:
-            with open(f"../../shared/fixtures/{fixture_name}") as f:
+            with (FIXTURES_DIR / fixture_name).open(encoding="utf-8") as f:
                 data = json.load(f)
 
                 company_id = data["company_id"]
@@ -197,9 +374,12 @@ def load_fixture_data():
 
                 multi_axis = score_all_axes(data)
                 thesis = evaluate_thesis_fit(data)
-                diligence_memo = _diligence_pipeline.run(
-                    {"company_name": company_name, "deck_claims": data.get("deck_claims", [])}
-                )
+                diligence_memo = _diligence_pipeline.run({
+                    "company_name": company_name,
+                    "sector": data.get("sector", "Not disclosed"),
+                    "deck_claims": data.get("deck_claims", []),
+                })
+                persist_gap_findings(company_id, founder_id, diligence_memo["diligence"])
 
                 OPPORTUNITIES_DB[company_id] = {
                     "signal_data": data,
@@ -211,6 +391,7 @@ def load_fixture_data():
 
                 FOUNDERS_DB[founder_id] = {
                     "founder_score": multi_axis.founder_score,
+                    "company_id": company_id,
                 }
 
         except FileNotFoundError:
@@ -228,6 +409,7 @@ async def startup_event():
     """Load fixtures on startup"""
     print("Loading fixture data...")
     try:
+        initialize_memory()
         load_fixture_data()
         print(f"Loaded {len(OPPORTUNITIES_DB)} opportunities")
     except Exception as e:
@@ -325,6 +507,64 @@ def get_founder_results(founder_id: str):
     return FounderResultsResponse(
         founder_score=FounderScoreResponse(**founder_score.dict()),
         narrative=narrative
+    )
+
+
+@app.post(
+    "/founders/{founder_id}/interview/start",
+    response_model=InterviewProgressResponse,
+)
+def start_interview(founder_id: str):
+    """Start or restart C's adaptive 5-question interview for this founder."""
+    if founder_id not in FOUNDERS_DB:
+        raise HTTPException(status_code=404, detail="Founder not found")
+    company_id = FOUNDERS_DB[founder_id]["company_id"]
+    claims = OPPORTUNITIES_DB[company_id]["signal_data"].get("deck_claims", [])
+    session = InterviewAgent().start(claims, max_questions=5)
+    INTERVIEW_SESSIONS[founder_id] = session
+    question = session.next_question()
+    return InterviewProgressResponse(
+        question=question,
+        question_number=1,
+        total_questions=session.max_questions,
+        complete=False,
+    )
+
+
+@app.post(
+    "/founders/{founder_id}/interview/respond",
+    response_model=InterviewProgressResponse,
+)
+def respond_to_interview(founder_id: str, request: InterviewAnswerRequest):
+    """Record an answer, adapt the next question, and persist the completed result."""
+    session = INTERVIEW_SESSIONS.get(founder_id)
+    if session is None:
+        raise HTTPException(status_code=409, detail="Interview has not been started")
+    if not request.answer.strip():
+        raise HTTPException(status_code=422, detail="Answer cannot be empty")
+    try:
+        session.record_response(request.answer)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    if len(session.responses) == session.max_questions:
+        result = session.result()
+        _persist_interview_result(founder_id, result)
+        _recompute_founder_score(founder_id, result["resilience_score"])
+        INTERVIEW_SESSIONS.pop(founder_id, None)
+        return InterviewProgressResponse(
+            question=None,
+            question_number=session.max_questions,
+            total_questions=session.max_questions,
+            complete=True,
+        )
+
+    question = session.next_question()
+    return InterviewProgressResponse(
+        question=question,
+        question_number=len(session.questions_asked),
+        total_questions=session.max_questions,
+        complete=False,
     )
 
 

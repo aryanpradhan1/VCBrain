@@ -35,6 +35,13 @@ List all opportunities with optional filters:
 - `?query=technical founder, AI infra` — natural language search
 - `?thesis_filter=true` — only thesis matches
 
+#### 5. `POST /founders/{founder_id}/interview/start`
+Starts C's adaptive five-question interview and returns the first question.
+
+#### 6. `POST /founders/{founder_id}/interview/respond`
+Records `{ "answer": "..." }`, returns the next adaptive question, and on
+completion persists the response-pattern result and recomputes the Founder Score.
+
 ### How It Works
 
 1. **Startup:** Loads fixtures from `/shared/fixtures/` and pre-scores them
@@ -45,20 +52,19 @@ List all opportunities with optional filters:
    - Approve if Founder Score ≥ 70
    - Review otherwise
 
-### In-Memory Storage
+### Storage
 
-Currently uses in-memory dicts (`OPPORTUNITIES_DB`, `FOUNDERS_DB`).
-In production, would use SQLite/Postgres with event-triggered score recomputation.
+Active opportunities and interview sessions are cached in memory for the demo.
+Gap findings, completed interview results, and event-triggered score history are
+persisted to SQLite at `backend/api/founderscore.sqlite3` (override with
+`FOUNDER_SCORE_DB_PATH`).
 
-### Mocked Components
+### Role C Integration
 
-Components not yet built (awaiting other team members):
-- **Claim Trust** (from Role C's Diligence/Validator)
-- **Memo** (from Role C's Memo Synthesizer)
-- **Adversarial View** (from Role C)
-- **Portfolio Check** (from Role C)
-
-API returns placeholder data for these. Once other modules are ready, just swap the mocks for real function calls.
+Claim validation, per-claim Trust Score, Memo Synthesizer, Adversarial View,
+Portfolio Check, and the Interview Agent call Role C's package directly. Diligence
+is computed once when fixtures load and cached so dashboard refreshes do not repeat
+external provider calls.
 
 ### Running the API
 
@@ -121,7 +127,6 @@ backend/api/
 
 ### Next Steps
 
-1. Replace mocked Trust/Memo/Adversarial/Portfolio with real modules when available
-2. Add SQLite persistence (currently in-memory)
-3. Add authentication/authorization (currently open)
-4. Deploy to Railway/Render (after 1:00 AM if time allows)
+1. Add authentication/authorization (currently open)
+2. Move active opportunity/session storage into SQLite for multi-process deployment
+3. Deploy to Railway/Render (after 1:00 AM if time allows)

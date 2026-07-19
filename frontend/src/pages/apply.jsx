@@ -184,7 +184,7 @@ export default function Apply() {
                 footprint. You'll hear back with a real decision within 24 hours.
               </p>
               <Link
-                to="/founder/f-002"
+                to="/founder/f002"
                 className="mt-6 text-sm font-medium underline underline-offset-4 transition-opacity hover:opacity-70">
                 See what your score page will look like
               </Link>

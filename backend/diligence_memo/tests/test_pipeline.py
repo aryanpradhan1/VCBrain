@@ -179,6 +179,21 @@ class PipelineTests(unittest.TestCase):
 
 
 class InterviewTests(unittest.TestCase):
+    def test_short_answer_follow_ups_are_claim_specific_and_do_not_repeat(self) -> None:
+        session = InterviewAgent().start(CLAIMS, max_questions=5)
+        questions = []
+        for answer in ("two people", "check google", "hi", "not sure", "later"):
+            question = session.next_question()
+            if question is None:
+                break
+            questions.append(question)
+            session.record_response(answer)
+
+        self.assertEqual(len(questions), 5)
+        self.assertEqual(len(set(questions)), 5)
+        self.assertTrue(any("traction" in item.casefold() for item in questions))
+        self.assertTrue(any("customer" in item.casefold() for item in questions))
+
     def test_adaptive_interview_scores_updated_response(self) -> None:
         session = InterviewAgent().start(CLAIMS, max_questions=4)
         self.assertIn("substantiate", session.next_question())
