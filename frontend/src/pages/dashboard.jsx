@@ -103,6 +103,7 @@ function Row({ opp }) {
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-[15px] font-semibold tracking-tight">{opp.company_name}</span>
             <Badge variant={verdictMeta[opp.verdict].variant}>{verdictMeta[opp.verdict].label}</Badge>
+            {opp.enrichment?.reference_profile && <Badge variant="outline" title={opp.enrichment.reference_label}>Reference</Badge>}
             <ChannelBadge channel={opp.sourcing_channel} compact />
             {opp.cold_start_flag && <ColdStartBadge compact />}
             {opp.enrichment && (
@@ -160,8 +161,9 @@ function RowSkeleton() {
 }
 
 export default function Dashboard() {
-  const { data, error, loading, retry } = useAsync(listOpportunities)
   const [query, setQuery] = useState("")
+  const [smartQuery, setSmartQuery] = useState("")
+  const { data, error, loading, retry } = useAsync(() => listOpportunities(smartQuery), [smartQuery])
   const [verdict, setVerdict] = useState("all")
   const [searchParams] = useSearchParams()
   const sourcingOnly = searchParams.get("channel") === "outbound"
@@ -173,12 +175,13 @@ export default function Dashboard() {
       if (sourcingOnly && o.sourcing_channel !== "outbound") return false
       if (verdict !== "all" && o.verdict !== verdict) return false
       if (!q) return true
+      if (smartQuery.trim() === query.trim()) return true
       return [o.company_name, pitchOf(o), o.sourcing_channel, o.verdict]
         .join(" ")
         .toLowerCase()
         .includes(q)
     })
-  }, [data, query, verdict, sourcingOnly])
+  }, [data, query, smartQuery, verdict, sourcingOnly])
 
   const stats = useMemo(() => {
     if (!data) return null
@@ -207,9 +210,11 @@ export default function Dashboard() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search founders, sectors, signals…"
+            onKeyDown={(event) => { if (event.key === "Enter") setSmartQuery(query) }}
+            placeholder="Search—or describe an ideal founder…"
             className="h-10 rounded-lg bg-card pl-9 shadow-none"
           />
+          {query && <span className="absolute top-full left-0 mt-1 text-[10px] text-muted-foreground">Press Enter for smart query</span>}
         </div>
       </div>
 

@@ -27,9 +27,9 @@ def build_enrichment(
     traction_claims = _claims_for(claims, "traction")
     team_claims = _claims_for(claims, "team")
 
-    solution = _choose_solution(product_claims, company)
-    problem = _choose_problem(product_claims)
-    traction_note = _traction_note(traction_claims)
+    solution = str(profile.get("reference_solution") or _choose_solution(product_claims, company))
+    problem = str(profile.get("reference_problem") or _choose_problem(product_claims))
+    traction_note = str(profile.get("reference_traction") or _traction_note(traction_claims))
     team = _team_members(profile, team_claims, sources)
     market = _market_from_claims(market_claims)
     return {
@@ -40,6 +40,11 @@ def build_enrichment(
         "stage": profile.get("stage") or "Not disclosed",
         "geography": profile.get("geography") or "Not disclosed",
         "website": profile.get("website") or _website_from_sources(sources, company),
+        "reference_profile": bool(profile.get("reference_profile")),
+        "reference_label": str(profile.get("reference_label") or ""),
+        "reference_batch": str(profile.get("reference_batch") or ""),
+        "competitors": list(profile.get("reference_competitors") or []),
+        "market_method": str(profile.get("reference_market_method") or ""),
         "founders": team,
         "market": market,
         "news": [
@@ -78,6 +83,10 @@ def relevant_sources(company_name: str, sources: list[dict[str, Any]], website: 
     for source in filtered:
         if source.get("type") == "deck":
             key = f"deck:{source.get('page')}"
+        elif source.get("type") == "public_reference":
+            # A curated reference can cite several distinct facts from the same
+            # official page. Keep those source cards distinct and attributable.
+            key = f"public_reference:{source.get('title')}"
         else:
             key = _canonical_source_key(str(source.get("url") or ""))
         if key not in selected:
@@ -122,7 +131,7 @@ def concise_memo(
         weaknesses.append("No active-user, retention, or paid-revenue evidence disclosed")
     market_basis = (enrichment.get("market") or {}).get("basis") or "Market sizing was not clearly disclosed."
     hypotheses = [
-        f"{company_name} may solve the stated patient problem if its predictive workflow produces measurable outcomes.",
+        f"{company_name} may solve the stated customer problem if its workflow produces measurable outcomes.",
         "The investment case depends on independently validating usage, clinical workflow adoption, and the stated commercial model.",
     ]
     if unique_flags:
@@ -200,8 +209,9 @@ def _team_members(profile: dict[str, Any], claims: list[dict[str, Any]], sources
         role=str(profile.get("founder_role") or roles_by_name.get(_member_key(founder_name)) or "Founder"),
         avatar=founder_avatar,
         linkedin=profile.get("linkedin"), github=profile.get("github"), x=profile.get("x"),
-        background=_profile_background(profile.get("profile_enrichment"), team_text or "Founder-submitted identity."),
-        ai_read="Exact public profile supplied by the founder." if profile.get("linkedin") else "Founder identity supplied with the application.",
+        background=_profile_background(profile.get("profile_enrichment"), profile.get("founder_background") or team_text or "Founder-submitted identity."),
+        affiliations=_profile_affiliations(profile.get("profile_enrichment")) or _safe_affiliations(profile.get("founder_affiliations")),
+        ai_read=profile.get("founder_ai_read") or ("Exact public profile supplied by the founder." if profile.get("linkedin") else "Founder identity supplied with the application."),
     )]
     seen = {_member_key(founder_name)}
     for item in submitted:
@@ -215,8 +225,9 @@ def _team_members(profile: dict[str, Any], claims: list[dict[str, Any]], sources
             role=str(item.get("role") or roles_by_name.get(key) or "Co-founder"),
             avatar=item.get("linkedin_avatar_url") or item.get("photo_url"),
             linkedin=item.get("linkedin"), github=item.get("github"), x=item.get("x"),
-            background=_profile_background(item.get("profile_enrichment"), "Founder-submitted team profile."),
-            ai_read="Exact public profile supplied by the founder." if item.get("linkedin") else "Team member supplied by the founder; no public identity link was provided.",
+            background=_profile_background(item.get("profile_enrichment"), item.get("background") or "Founder-submitted team profile."),
+            affiliations=_profile_affiliations(item.get("profile_enrichment")) or _safe_affiliations(item.get("affiliations")),
+            ai_read=item.get("ai_read") or ("Exact public profile supplied by the founder." if item.get("linkedin") else "Team member supplied by the founder; no public identity link was provided."),
         ))
     for name, role in deck_entries:
         if _member_key(name) in seen:
@@ -225,6 +236,7 @@ def _team_members(profile: dict[str, Any], claims: list[dict[str, Any]], sources
         members.append(_member_card(
             name=name, role=role, avatar=None, linkedin=None, github=None, x=None,
             background="Listed in the uploaded deck.",
+            affiliations=[],
             ai_read="Deck-listed team member; no public profile was supplied for identity matching.",
         ))
     return members
@@ -244,6 +256,21 @@ def _profile_background(enrichment: Any, fallback: str) -> str:
         if headline:
             return headline[:260]
     return fallback
+
+
+def _profile_affiliations(enrichment: Any) -> list[str]:
+    if not isinstance(enrichment, dict) or enrichment.get("status") != "matched":
+        return []
+    values = enrichment.get("affiliations")
+    if not isinstance(values, list):
+        return []
+    return [str(value).strip()[:180] for value in values if str(value).strip()][:4]
+
+
+def _safe_affiliations(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    return [str(value).strip()[:180] for value in values if str(value).strip()][:4]
 
 
 def _member_card(**fields: Any) -> dict[str, Any]:
@@ -278,25 +305,26 @@ def _website_from_sources(sources: list[dict[str, Any]], company_name: str = "")
 
 
 def _market_from_claims(claims: list[dict[str, Any]]) -> dict[str, Any] | None:
-    values: dict[str, tuple[float, str, str, int]] = {}
+    values: dict[str, tuple[float, str, str, str]] = {}
     for claim in claims:
         text = claim["value"]
         label_match = re.search(r"\b(TAM|SAM|SOM)\b", text, re.I)
-        amount_match = re.search(r"\$\s*([\d.]+)\s*(B|M|K)\b", text, re.I)
+        amount_match = re.search(r"\$\s*([\d.]+)\s*(T|B|M|K)\b", text, re.I)
         if not label_match or not amount_match:
             continue
         label = label_match.group(1).casefold()
         amount = float(amount_match.group(1))
         unit = amount_match.group(2).upper()
-        millions = amount * {"B": 1000, "M": 1, "K": 0.001}[unit]
-        values[label] = (millions, f"${amount:g}{unit}", text, int(claim.get("source_slide", 0)))
+        millions = amount * {"T": 1_000_000, "B": 1000, "M": 1, "K": 0.001}[unit]
+        source_label = str(claim.get("source_label") or f"Deck slide {int(claim.get('source_slide', 0))}")
+        values[label] = (millions, f"${amount:g}{unit}", text, source_label)
     if not {"tam", "sam", "som"}.issubset(values):
         basis = claims[-1]["value"] if claims else ""
         return {"basis": basis} if basis else None
     return {
         "tam": values["tam"][0], "sam": values["sam"][0], "som": values["som"][0],
         "unit": "$M", "display": {"tam": values["tam"][1], "sam": values["sam"][1], "som": values["som"][1]},
-        "basis": f"Deck slide {values['tam'][3]}: {values['tam'][2]} Deck slide {values['sam'][3]}: {values['sam'][2]} Deck slide {values['som'][3]}: {values['som'][2]}",
+        "basis": f"{values['tam'][3]}: {values['tam'][2]} {values['sam'][3]}: {values['sam'][2]} {values['som'][3]}: {values['som'][2]}",
     }
 
 

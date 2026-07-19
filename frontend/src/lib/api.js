@@ -22,8 +22,8 @@ async function real(path, options) {
   return res.json()
 }
 
-export async function listOpportunities() {
-  if (BASE) return real("/opportunities")
+export async function listOpportunities(query = "") {
+  if (BASE) return real(`/opportunities${query.trim() ? `?query=${encodeURIComponent(query.trim())}` : ""}`)
   await delay(650)
   return [...opportunities].sort((a, b) => b.founder_score.value - a.founder_score.value)
 }

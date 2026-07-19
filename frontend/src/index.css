@@ -190,6 +190,10 @@
   display: none;
 }
 
+.memo-export-only {
+  display: none;
+}
+
 @media print {
   @page {
     size: auto;
@@ -215,6 +219,92 @@
 
   .memo-document {
     display: block !important;
+  }
+
+  .memo-summary-rail,
+  .memo-screen-content {
+    display: none !important;
+  }
+
+  .memo-export-only {
+    display: block !important;
+    color: #1e293b;
+    font-size: 9.5pt;
+    line-height: 1.48;
+  }
+
+  .memo-export-decision {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1.5mm 8mm;
+    margin-bottom: 7mm;
+    padding: 4mm;
+    border: 1px solid #cbd5e1;
+    border-radius: 3mm;
+    background: #f8fafc;
+  }
+
+  .memo-export-decision span {
+    color: #64748b;
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .memo-export-decision strong {
+    text-align: right;
+  }
+
+  .memo-export-section {
+    margin: 0 0 5mm;
+    padding-bottom: 4mm;
+    border-bottom: 1px solid #e2e8f0;
+    break-inside: avoid;
+  }
+
+  .memo-export-section h2 {
+    margin: 0 0 1.5mm;
+    color: #0f172a;
+    font-size: 10pt;
+    font-weight: 750;
+  }
+
+  .memo-export-section h3 {
+    margin: 0 0 1mm;
+    color: #475569;
+    font-size: 8pt;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  .memo-export-section p,
+  .memo-export-section ol,
+  .memo-export-section ul {
+    margin: 0;
+  }
+
+  .memo-export-section li + li {
+    margin-top: 1.2mm;
+  }
+
+  .memo-export-swot {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3mm;
+  }
+
+  .memo-export-swot > div {
+    padding: 3mm;
+    border-radius: 2mm;
+    background: #f8fafc;
+  }
+
+  .memo-export-section li span {
+    display: block;
+    color: #64748b;
+    font-size: 7.5pt;
+    overflow-wrap: anywhere;
   }
 
   .memo-print-heading {
@@ -248,11 +338,6 @@
   .memo-print-meta {
     margin-top: 1mm;
     font-size: 9pt;
-  }
-
-  .memo-summary-rail {
-    position: static !important;
-    margin-bottom: 6mm;
   }
 
   section, .rounded-2xl, .rounded-xl, .card-hairline {

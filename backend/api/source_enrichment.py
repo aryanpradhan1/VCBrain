@@ -11,6 +11,7 @@ import os
 import re
 from datetime import datetime, timezone
 from html import unescape
+from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -195,6 +196,58 @@ def enrich_submitted_people(profile: dict[str, Any]) -> tuple[dict[str, Any], li
     return updated, sources
 
 
+def cache_verified_profile_avatars(profile: dict[str, Any], media_root: Path, company_id: str) -> dict[str, Any]:
+    """Cache portraits only after an exact PDL LinkedIn-profile match.
+
+    Some public-image CDNs reject a browser hotlink even though the provider returned
+    a valid portrait. A short-lived, local copy makes a matched portrait dependable
+    in the UI. We never fetch arbitrary profile URLs or infer a portrait from a name.
+    """
+    updated = dict(profile)
+    avatar_dir = media_root / "avatars"
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+
+    def cache_person(item: dict[str, Any], suffix: str) -> dict[str, Any]:
+        person = dict(item)
+        enrichment = person.get("profile_enrichment")
+        if not isinstance(enrichment, dict) or enrichment.get("status") != "matched":
+            return person
+        image_url = valid_public_url(enrichment.get("image_url"))
+        if not image_url:
+            return person
+        filename = f"{company_id}-{suffix}.jpg"
+        destination = avatar_dir / filename
+        if not destination.exists():
+            try:
+                response = requests.get(image_url, timeout=8, stream=True, headers={"User-Agent": "FounderScore/1.0"})
+                content_type = response.headers.get("content-type", "").casefold()
+                if response.status_code >= 400 or not content_type.startswith("image/"):
+                    return person
+                total = 0
+                with destination.open("wb") as image_file:
+                    for chunk in response.iter_content(chunk_size=64 * 1024):
+                        total += len(chunk)
+                        if total > 2 * 1024 * 1024:
+                            image_file.close()
+                            destination.unlink(missing_ok=True)
+                            return person
+                        image_file.write(chunk)
+            except (OSError, requests.RequestException):
+                destination.unlink(missing_ok=True)
+                return person
+        person["linkedin_avatar_url"] = f"/media/avatars/{filename}"
+        return person
+
+    updated = cache_person(updated, "founder")
+    members = [
+        cache_person(member, f"team-{index}") if isinstance(member, dict) else member
+        for index, member in enumerate(updated.get("team_members") or [], start=1)
+    ]
+    if members:
+        updated["team_members"] = members
+    return updated
+
+
 def _pdl_person_enrichment(
     linkedin_url: str | None, previous: Any, submitted_name: str | None
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -242,6 +295,10 @@ def _pdl_person_enrichment(
         "headline": str(data.get("headline") or "")[:280],
         "job_title": str(data.get("job_title") or "")[:160],
         "job_company_name": str(data.get("job_company_name") or "")[:160],
+        # Retain a small, display-safe history for an investor to evaluate context.
+        # We intentionally do not persist the provider's raw employment/education
+        # object (which can contain dates, locations, and much more detail).
+        "affiliations": _profile_affiliations(data),
     }
     display_name = str(data.get("full_name") or submitted_name or "Founder").strip()
     return state, source_record(
@@ -276,6 +333,63 @@ def _linkedin_profile_from_list(profiles: Any) -> str | None:
         if identity:
             return identity
     return None
+
+
+def _profile_affiliations(data: dict[str, Any]) -> list[str]:
+    """Return up to four compact, public-facing role or education labels.
+
+    PDL's schema has evolved over time, so company and school values may be either
+    strings or small objects.  This helper deliberately accepts both, removes
+    duplicates, and stores only readable labels suitable for the investor UI.
+    """
+    labels: list[str] = []
+    for entry in data.get("experience") or []:
+        if not isinstance(entry, dict):
+            continue
+        title = _affiliation_value(entry.get("title"))
+        company = _affiliation_value(entry.get("company"))
+        if title and company:
+            labels.append(f"{title} · {company}")
+        elif company:
+            labels.append(company)
+        elif title:
+            labels.append(title)
+    for entry in data.get("education") or []:
+        if not isinstance(entry, dict):
+            continue
+        school = _affiliation_value(entry.get("school"))
+        degree = _affiliation_value(entry.get("degree"))
+        if not degree:
+            degrees = entry.get("degrees")
+            if isinstance(degrees, list) and degrees:
+                degree = _affiliation_value(degrees[0])
+        if school and degree:
+            labels.append(f"{school} · {degree}")
+        elif school:
+            labels.append(school)
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for label in labels:
+        clean = re.sub(r"\s+", " ", label).strip()[:180]
+        key = clean.casefold()
+        if clean and key not in seen:
+            seen.add(key)
+            unique.append(clean)
+        if len(unique) == 4:
+            break
+    return unique
+
+
+def _affiliation_value(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("name", "title", "value"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+    return ""
 
 
 def search_press(company_name: str, website: str | None = None, max_results: int = 5) -> list[dict[str, Any]]:

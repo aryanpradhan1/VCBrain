@@ -32,7 +32,7 @@ from backend.api.document_intake import (
     extract_document,
 )
 from backend.api.presentation import build_enrichment, concise_memo, relevant_sources
-from backend.api.source_enrichment import enrich_submitted_people, fetch_site_metadata, github_profile_signal, search_press, submitted_link_sources, valid_public_url
+from backend.api.source_enrichment import cache_verified_profile_avatars, enrich_submitted_people, fetch_site_metadata, github_profile_signal, search_press, submitted_link_sources, valid_public_url
 from backend.api.store import ApplicationStore
 
 
@@ -419,6 +419,148 @@ def _cache_application(record: dict[str, Any]) -> None:
     FOUNDERS_DB[record["founder_id"]] = {"founder_score": analysis["multi_axis"]["founder_score"]}
 
 
+def _public_reference_record(reference: dict[str, Any]) -> dict[str, Any]:
+    """Compile a source-attributed public company reference into the API contract.
+
+    These records are for demonstrating sourcing and network intelligence. Their
+    scores are curated snapshots, clearly marked as references and excluded from
+    a live check recommendation. Market SAM/SOM values remain labeled assumptions.
+    """
+    founders = list(reference["founders"])
+    lead = founders[0]
+    market = reference["market"]
+    batch = reference["batch"]
+    profile = {
+        "company_name": reference["company_name"],
+        "founder_name": lead["name"],
+        "founder_role": lead["role"],
+        "photo_url": lead["avatar"],
+        "founder_background": lead["background"],
+        "founder_affiliations": lead["affiliations"],
+        "founder_ai_read": "Portrait, role, and biography are mapped from the cited official YC company profile.",
+        "team_members": [
+            {
+                "name": founder["name"], "role": founder["role"], "photo_url": founder["avatar"],
+                "background": founder["background"], "affiliations": founder["affiliations"],
+                "ai_read": "Portrait, role, and biography are mapped from the cited official YC company profile.",
+            }
+            for founder in founders[1:]
+        ],
+        "sector": reference["sector"],
+        "stage": "Public reference company",
+        "geography": reference["geography"],
+        "website": reference["website"],
+        "reference_profile": True,
+        "reference_label": "Curated public reference — not a current investment recommendation",
+        "reference_problem": reference["problem"],
+        "reference_solution": reference["solution"],
+        "reference_traction": reference["traction"],
+        "reference_competitors": reference["competitors"],
+        "reference_market_method": market["basis"],
+        "reference_batch": batch,
+    }
+    claims = [
+        {"field": "team", "value": "; ".join(f"{f['name']} ({f['role']})" for f in founders) + f". {batch}.", "source_slide": 1, "source_label": "Official YC profile"},
+        {"field": "problem_product", "value": reference["solution"], "source_slide": 2, "source_label": "Official YC profile"},
+        {"field": "market_size", "value": f"TAM {market['tam']}. {market['basis']}", "source_slide": 3, "source_label": "External market benchmark"},
+        {"field": "market_size", "value": f"SAM {market['sam']}. {market['basis']}", "source_slide": 4, "source_label": "FounderScore assumption model"},
+        {"field": "market_size", "value": f"SOM {market['som']}. {market['basis']}", "source_slide": 5, "source_label": "FounderScore assumption model"},
+        {"field": "traction", "value": reference["traction"], "source_slide": 6, "source_label": "Official YC profile"},
+    ]
+    signal = {
+        "founder_id": reference["founder_id"], "company_id": reference["company_id"],
+        "deck_claims": claims,
+        # Company/project evidence is never mislabeled as a founder's personal
+        # GitHub, launch, or paper count.
+        "public_signals": {
+            "github": {"repos": 0, "commit_consistency_score": 0.0, "longevity_months": 0},
+            "devpost_hn": {"launches": 0, "total_upvotes": 0},
+            "arxiv": {"papers": 0},
+        },
+        "sourcing_channel": "outbound", "cold_start_flag": False,
+    }
+    sources = [
+        {
+            "type": "company_website", "title": f"{reference['company_name']} · official website",
+            "url": reference["website"], "excerpt": reference["solution"],
+            "image_url": reference["logo_url"], "favicon_url": reference["logo_url"],
+            "source": reference["company_name"], "page": None, "retrieved_at": "2026-07-18T00:00:00+00:00",
+        },
+        {
+            "type": "public_reference", "title": f"yc_profile · {reference['company_name']} and founders",
+            "url": reference["yc_url"], "excerpt": f"{batch}. {reference['traction']}",
+            "image_url": lead["avatar"], "source": "Y Combinator", "page": 1, "retrieved_at": "2026-07-18T00:00:00+00:00",
+        },
+        {
+            "type": "market_research", "title": f"market_model · {reference['sector']}",
+            "url": market["url"], "excerpt": market["basis"], "source": "External benchmark + FounderScore assumptions",
+            "page": 3, "retrieved_at": "2026-07-18T00:00:00+00:00",
+        },
+    ]
+    if market.get("secondary_url"):
+        sources.append({
+            "type": "market_research", "title": f"market_model · {reference['sector']} serviceable segment",
+            "url": market["secondary_url"], "excerpt": market["basis"], "source": "External market benchmark",
+            "page": 4, "retrieved_at": "2026-07-18T00:00:00+00:00",
+        })
+    score = int(reference["founder_score"])
+    market_rating = reference["market_rating"]
+    idea_rating = reference["idea_rating"]
+    analysis = {
+        "verdict": "review",
+        "multi_axis": {
+            "founder_axis": {
+                "score": score, "trend": "stable",
+                "rationale": f"The official accelerator profile identifies the full founding team and specific prior execution signals. This {score} is a curated sourcing reference, not a live underwriting score.",
+                "citations": ["yc_profile"],
+            },
+            "market_axis": {
+                "rating": market_rating, "trend": "improving" if market_rating == "bullish" else "stable",
+                "rationale": f"The external benchmark supports a meaningful {reference['sector']} category. SAM and SOM are visible assumptions, not company claims, and should be sensitivity-tested before investment.",
+                "citations": ["market_model"],
+            },
+            "idea_vs_market_axis": {
+                "rating": idea_rating, "trend": "stable",
+                "rationale": f"{reference['solution']} The cited public profile supplies product context, while customer and retention diligence remains separate.",
+                "citations": ["yc_profile"],
+            },
+            "founder_score": {"value": score, "confidence_interval": 10, "trend": "stable"},
+        },
+        "thesis": {"thesis_match": False, "match_type": "exact", "rationale": "Public sourcing reference; excluded from the current pre-seed check decision."},
+        "diligence_memo": {
+            "diligence": {"tavily_sources_checked": [market["url"], reference["yc_url"]], "flagged_claims": [], "memory_update": False},
+            "trust": {"claim_trust": [
+                {"claim": "team", "confidence": "high", "evidence": "Names, roles, portraits, and disclosed backgrounds are mapped from the official YC company profile."},
+                {"claim": "problem_product", "confidence": "high", "evidence": "Product scope is mapped from the official YC and company profiles."},
+                {"claim": "market_size", "confidence": "medium", "evidence": "TAM has an external benchmark; SAM and SOM are explicitly identified as FounderScore assumptions."},
+                {"claim": "traction", "confidence": "medium", "evidence": "Accelerator-reported evidence is retained, but customer and revenue metrics are not independently audited here."},
+            ]},
+            "memo": {
+                "required": {
+                    "company_snapshot": f"{reference['company_name']} is a sourced public reference in {reference['sector']}.",
+                    "investment_hypotheses": ["Technical founding-team signal", "Large category with a defined wedge", "Public execution evidence warrants deeper diligence"],
+                    "swot": {
+                        "strengths": ["Named team with public execution history", "Clear product wedge"],
+                        "weaknesses": ["Reference profile is not a current data room"],
+                        "opportunities": [market["basis"]],
+                        "threats": [f"Competition: {', '.join(reference['competitors'])}"],
+                    },
+                    "problem_and_product": f"Problem: {reference['problem']} Solution: {reference['solution']}",
+                    "traction_kpis": reference["traction"],
+                },
+                "optional_or_flagged": {
+                    "team_and_history": "; ".join(f"{f['name']} — {f['background']}" for f in founders),
+                    "cap_table": "Not disclosed in public reference",
+                },
+            },
+            "adversarial_view": {"challenges": ["The public profile is useful for sourcing but cannot replace current customer, financial, legal, and technical diligence.", "SAM and SOM depend on explicit share assumptions and should be scenario-tested."]},
+            "portfolio_check": {"overlap": False, "note": "Reference profile; run against the live portfolio before a decision."},
+            "verdict": "review", "amount_recommended": 0,
+        },
+    }
+    return {"profile": profile, "signal": signal, "sources": sources, "analysis": analysis}
+
+
 def load_fixture_data() -> None:
     OPPORTUNITIES_DB.clear()
     FOUNDERS_DB.clear()
@@ -442,6 +584,50 @@ def load_fixture_data() -> None:
         sources = [{"type": "deck", "title": f"Deck slide {item.get('source_slide')}", "url": f"/opportunities/{company_id}", "excerpt": item.get("value", ""), "source": "Seeded pitch-deck fixture", "page": item.get("source_slide")} for item in payload.get("deck_claims", [])]
         store.upsert_application(company_id=company_id, founder_id=payload["founder_id"], company_name=profile["company_name"], status="ready", profile=profile, documents=documents, sources=sources, signal=merged_signal, analysis=analysis, trace=traces)
         _cache_application(store.get(company_id) or {})
+
+    # These are intentionally separate from the synthetic early-stage fixtures:
+    # each is a public reference profile with attributable sources and an explicit
+    # "not an investment recommendation" marker in the UI. They make the sourcing
+    # demo concrete without pretending a mature company is a live $100K candidate.
+    reference_path = FIXTURE_ROOT / "curated_public_references.json"
+    if reference_path.exists():
+        for reference in json.loads(reference_path.read_text()):
+            company_id = reference["company_id"]
+            trace = [{
+                "agent": "source", "label": "Curated public reference", "kind": "rule",
+                "summary": "Official public company and project sources retained for sourcing-context demonstration; excluded from live underwriting.",
+                "ms": 1,
+            }]
+            store.upsert_application(
+                company_id=company_id,
+                founder_id=reference["founder_id"],
+                company_name=reference["company_name"],
+                status="ready",
+                profile=reference["profile"],
+                documents=[],
+                sources=reference["sources"],
+                signal=reference["signal"],
+                analysis=reference["analysis"],
+                trace=trace,
+            )
+            _cache_application(store.get(company_id) or {})
+
+    cohort_path = FIXTURE_ROOT / "curated_public_cohort.json"
+    if cohort_path.exists():
+        for reference in json.loads(cohort_path.read_text()):
+            compiled = _public_reference_record(reference)
+            trace = [{
+                "agent": "source", "label": "Public-source graph", "kind": "rule",
+                "summary": "Official accelerator, company, founder portrait, and market-source nodes mapped into the sourcing graph.",
+                "ms": 1,
+            }]
+            store.upsert_application(
+                company_id=reference["company_id"], founder_id=reference["founder_id"],
+                company_name=reference["company_name"], status="ready", profile=compiled["profile"],
+                documents=[], sources=compiled["sources"], signal=compiled["signal"],
+                analysis=compiled["analysis"], trace=trace,
+            )
+            _cache_application(store.get(reference["company_id"]) or {})
 
     # Fixtures give the demo a useful starting state, but real applications are
     # the durable product data. Reload every completed record after a server
@@ -502,7 +688,10 @@ def _assemble_opportunity(company_id: str) -> OpportunityResponse:
         for source in sources
         if source.get("type") == "news"
     ]
-    verdict = record.get("decision") or analysis["verdict"]
+    # Older persisted records created before the API envelope gained a top-level
+    # verdict still retain the canonical diligence verdict. Read that fallback so a
+    # single legacy record cannot break the entire opportunity list.
+    verdict = record.get("decision") or analysis.get("verdict") or diligence_memo.get("verdict", "review")
     concise = concise_memo(record["company_name"], enrichment, analysis)
     return OpportunityResponse(
         founder_id=record["founder_id"], company_id=company_id, company_name=record["company_name"],
@@ -718,6 +907,7 @@ def _process_application(company_id: str) -> None:
         traces.append({"agent": "intake", "label": "Signal Intake", "kind": "rule", "summary": f"{len(claims)} deck claims extracted; checking supplied profiles and company-specific coverage.", "ms": 1, "stage": "checking_sources"})
         store.update_processing(company_id, status="processing", signal=signal, documents=extracted, trace=traces)
         profile, people_sources = enrich_submitted_people(record["profile"])
+        profile = cache_verified_profile_avatars(profile, MEDIA_ROOT, company_id)
         github, github_source = github_profile_signal(profile.get("github"))
         signal["public_signals"]["github"] = github
         sources = submitted_link_sources(profile)
@@ -778,6 +968,7 @@ def _refresh_existing_analysis(company_id: str) -> None:
         if discovered and not profile.get("website"):
             profile["website"] = discovered
         profile, people_sources = enrich_submitted_people(profile)
+        profile = cache_verified_profile_avatars(profile, MEDIA_ROOT, company_id)
         github, github_source = github_profile_signal(profile.get("github"))
         signal["public_signals"]["github"] = github
         sources = submitted_link_sources(profile)

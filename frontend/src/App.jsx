@@ -7,6 +7,7 @@ import Dashboard from "@/pages/dashboard"
 import FounderResults from "@/pages/founder-results"
 import Interview from "@/pages/interview"
 import Memo from "@/pages/memo"
+import NetworkIntelligence from "@/pages/network"
 import Thesis from "@/pages/thesis"
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
         <Route element={<InvestorShell />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/opportunities/:id" element={<Memo />} />
+          <Route path="/network" element={<NetworkIntelligence />} />
           <Route path="/thesis" element={<Thesis />} />
         </Route>
 
