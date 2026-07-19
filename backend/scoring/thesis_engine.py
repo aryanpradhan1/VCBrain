@@ -183,12 +183,16 @@ def deterministic_gate(
     if ask_amount > 0:  # Only check if ask is specified
         if ask_amount < thesis["check_size_min"]:
             return (False, "reject", f"Ask ${ask_amount:,} below minimum check ${thesis['check_size_min']:,}")
-        elif ask_amount > thesis["check_size_max"]:
-            return (False, "reject", f"Ask ${ask_amount:,} above maximum check ${thesis['check_size_max']:,}")
+        # The deck's raise is the total round, not necessarily this fund's check. A
+        # larger round can still accommodate the fund's configured check size, so it is
+        # a sizing note for the partner—not a thesis rejection.
 
     # If we got here, it's either exact or adjacent
+    round_note = ""
+    if ask_amount > thesis["check_size_max"]:
+        round_note = f"; total raise ${ask_amount:,} exceeds this fund's typical check but can accommodate a partial check"
     if exact_sector_match:
-        return (True, "exact", f"Exact match: {sector}, {geography}, appropriate stage and check size")
+        return (True, "exact", f"Exact match: {sector}, {geography}, appropriate stage{round_note}")
     else:
         return (True, "adjacent", f"Adjacent sector: {sector} — requires LLM judgment for fit")
 
