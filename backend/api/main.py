@@ -32,7 +32,7 @@ from backend.api.document_intake import (
     extract_document,
 )
 from backend.api.presentation import build_enrichment, concise_memo, relevant_sources
-from backend.api.source_enrichment import cache_verified_profile_avatars, enrich_submitted_people, fetch_site_metadata, github_profile_signal, search_press, submitted_link_sources, valid_public_url
+from backend.api.source_enrichment import cache_verified_profile_avatars, enrich_submitted_people, enrich_team_members_from_deck, fetch_site_metadata, github_profile_signal, search_press, submitted_link_sources, valid_public_url
 from backend.api.store import ApplicationStore
 
 
@@ -904,9 +904,29 @@ def _process_application(company_id: str) -> None:
         # happened for outbound-sourced signals, never for a real deck submission, so a
         # founder's Memory record was permanently incomplete even after they applied.
         save_signal(record["founder_id"], "deck", signal)
-        traces.append({"agent": "intake", "label": "Signal Intake", "kind": "rule", "summary": f"{len(claims)} deck claims extracted; checking supplied profiles and company-specific coverage.", "ms": 1, "stage": "checking_sources"})
+        traces.append({"agent": "intake", "label": "Signal Intake", "kind": "rule", "summary": f"{len(claims)} deck claims extracted; auto-discovering team member profiles and checking supplied profiles.", "ms": 1, "stage": "checking_sources"})
         store.update_processing(company_id, status="processing", signal=signal, documents=extracted, trace=traces)
-        profile, people_sources = enrich_submitted_people(record["profile"])
+
+        # Auto-discover team member LinkedIn/GitHub profiles from deck
+        team_claims = [
+            c for c in claims
+            if (c.get("field") if isinstance(c, dict) else getattr(c, "field", None)) == "team"
+        ]
+        discovered_team = enrich_team_members_from_deck(team_claims, record["company_name"])
+
+        # Merge discovered team members with existing profile
+        profile = dict(record["profile"])
+        if discovered_team and not profile.get("team_members"):
+            profile["team_members"] = discovered_team
+        elif discovered_team and profile.get("team_members"):
+            # Merge: add discovered members not already in profile
+            existing_names = {re.sub(r"[^a-z0-9]", "", str(m.get("name", "")).casefold()) for m in profile["team_members"] if isinstance(m, dict)}
+            for member in discovered_team:
+                member_key = re.sub(r"[^a-z0-9]", "", member["name"].casefold())
+                if member_key not in existing_names:
+                    profile["team_members"].append(member)
+
+        profile, people_sources = enrich_submitted_people(profile)
         profile = cache_verified_profile_avatars(profile, MEDIA_ROOT, company_id)
         github, github_source = github_profile_signal(profile.get("github"))
         signal["public_signals"]["github"] = github

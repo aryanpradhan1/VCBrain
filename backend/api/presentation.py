@@ -191,10 +191,18 @@ def _traction_note(claims: list[dict[str, Any]]) -> str:
 
 def _team_members(profile: dict[str, Any], claims: list[dict[str, Any]], sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     team_text = claims[0]["value"] if claims else ""
-    deck_entries = [
+    # Support both "Name (Role)" and "Name as Role" formats
+    deck_entries = []
+    # First try parentheses format: "Name (Role)"
+    deck_entries.extend([
         (re.sub(r"^Team:\s*", "", name).strip(), role.strip())
         for name, role in re.findall(r"([^,:]+?)\s*\(([^)]+)\)", team_text)
-    ]
+    ])
+    # Then try "Name as Role" format (handles "Shrishant H as CEO", "Dr. Name as advisor", etc.)
+    deck_entries.extend([
+        (name.strip(), role.strip())
+        for name, role in re.findall(r"((?:Dr\.\s+)?[A-Z][a-z]+(?:\s+[A-Z](?:\.\s+)?[A-Z]?[a-z]*)*)\s+as\s+([A-Z]{2,}|[a-z]+|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)", team_text)
+    ])
     submitted = [item for item in profile.get("team_members") or [] if isinstance(item, dict) and item.get("name")]
     roles_by_name = {_member_key(name): role for name, role in deck_entries}
     founder_name = str(profile.get("founder_name") or "Founder").strip()
@@ -209,7 +217,7 @@ def _team_members(profile: dict[str, Any], claims: list[dict[str, Any]], sources
         role=str(profile.get("founder_role") or roles_by_name.get(_member_key(founder_name)) or "Founder"),
         avatar=founder_avatar,
         linkedin=profile.get("linkedin"), github=profile.get("github"), x=profile.get("x"),
-        background=_profile_background(profile.get("profile_enrichment"), profile.get("founder_background") or team_text or "Founder-submitted identity."),
+        background=_profile_background(profile.get("profile_enrichment"), profile.get("founder_background") or "Founder-submitted identity."),
         affiliations=_profile_affiliations(profile.get("profile_enrichment")) or _safe_affiliations(profile.get("founder_affiliations")),
         ai_read=profile.get("founder_ai_read") or ("Exact public profile supplied by the founder." if profile.get("linkedin") else "Founder identity supplied with the application."),
     )]
@@ -230,9 +238,17 @@ def _team_members(profile: dict[str, Any], claims: list[dict[str, Any]], sources
             ai_read=item.get("ai_read") or ("Exact public profile supplied by the founder." if item.get("linkedin") else "Team member supplied by the founder; no public identity link was provided."),
         ))
     for name, role in deck_entries:
-        if _member_key(name) in seen:
+        key = _member_key(name)
+        # Check if this deck entry matches an already-seen person by partial name
+        # e.g., "Aryan P" matches "Aryan Pradhan"
+        is_duplicate = key in seen or any(
+            key in existing_key or existing_key in key
+            for existing_key in seen
+            if len(key) > 3 and len(existing_key) > 3  # Avoid false matches on very short names
+        )
+        if is_duplicate:
             continue
-        seen.add(_member_key(name))
+        seen.add(key)
         members.append(_member_card(
             name=name, role=role, avatar=None, linkedin=None, github=None, x=None,
             background="Listed in the uploaded deck.",
