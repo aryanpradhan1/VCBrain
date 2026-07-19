@@ -45,20 +45,17 @@ List all opportunities with optional filters:
    - Approve if Founder Score ≥ 70
    - Review otherwise
 
-### In-Memory Storage
+### Storage
 
-Currently uses in-memory dicts (`OPPORTUNITIES_DB`, `FOUNDERS_DB`).
-In production, would use SQLite/Postgres with event-triggered score recomputation.
+Applications, analysis results, and interview sessions persist through the API's
+SQLite application store under `backend/data/`; the in-memory maps are only a
+runtime cache for fast endpoint reads.
 
-### Mocked Components
+### Role C Integration
 
-Components not yet built (awaiting other team members):
-- **Claim Trust** (from Role C's Diligence/Validator)
-- **Memo** (from Role C's Memo Synthesizer)
-- **Adversarial View** (from Role C)
-- **Portfolio Check** (from Role C)
-
-API returns placeholder data for these. Once other modules are ready, just swap the mocks for real function calls.
+Claim validation, per-claim Trust Score, Memo Synthesizer, Adversarial View,
+Portfolio Check, and the Interview Agent call Role C's package directly. Diligence
+is run during processing, never on dashboard refreshes.
 
 ### Running the API
 
@@ -135,7 +132,6 @@ backend/api/
 
 ### Next Steps
 
-1. Replace mocked Trust/Memo/Adversarial/Portfolio with real modules when available
-2. Add SQLite persistence (currently in-memory)
-3. Add authentication/authorization (currently open)
-4. Deploy to Railway/Render (after 1:00 AM if time allows)
+1. Add authentication/authorization (currently open)
+2. Move active opportunity/session storage into SQLite for multi-process deployment
+3. Deploy to Railway/Render (after 1:00 AM if time allows)

@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from "react-router-dom"
+import { Link, useParams } from "react-router-dom"
 import { motion } from "motion/react"
 import { MessageCircle } from "lucide-react"
 
@@ -14,7 +14,6 @@ import { useAsync } from "@/lib/use-async"
 // The founder sees exactly this: score ± interval, trend, narrative. Nothing else, ever.
 export default function FounderResults() {
   const { id } = useParams()
-  const navigate = useNavigate()
   const { data, error, loading, retry } = useAsync(() => getFounderResults(id), [id])
   return (
     <div className="min-h-dvh bg-slate-50/60">
@@ -66,11 +65,13 @@ export default function FounderResults() {
               transition={{ delay: 1.85, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
               className="mt-10 flex flex-col items-center">
               <Button
-                onClick={() => navigate(`/founder/${id}/interview`)}
+                asChild
                 size="lg"
                 className="gap-2 rounded-lg px-5 text-sm font-semibold shadow-sm">
-                <MessageCircle className="size-4" />
-                Start interview
+                <Link to={`/founder/${id}/interview`}>
+                  <MessageCircle className="size-4" />
+                  Start interview
+                </Link>
               </Button>
               <p className="mt-3 text-xs text-muted-foreground">
                 A short conversation that sharpens your score — it never resets.
