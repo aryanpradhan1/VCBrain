@@ -50,6 +50,30 @@ class ApplicationStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS thesis_settings (
+                  settings_key TEXT PRIMARY KEY,
+                  config_json TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS interview_sessions (
+                  session_id TEXT PRIMARY KEY,
+                  company_id TEXT NOT NULL,
+                  founder_id TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  questions_json TEXT NOT NULL DEFAULT '[]',
+                  responses_json TEXT NOT NULL DEFAULT '[]',
+                  result_json TEXT,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                )
+                """
+            )
 
     @staticmethod
     def _json(value: Any) -> str:
@@ -168,6 +192,98 @@ class ApplicationStore:
                 (decision, utc_now(), company_id),
             )
 
+    def get_by_founder(self, founder_id: str) -> dict[str, Any] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM applications WHERE founder_id = ? ORDER BY updated_at DESC LIMIT 1",
+                (founder_id,),
+            ).fetchone()
+        return self._row(row) if row else None
+
+    def get_thesis(self, default: dict[str, Any]) -> dict[str, Any]:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT config_json FROM thesis_settings WHERE settings_key = 'fund'"
+            ).fetchone()
+        return self._load(row["config_json"], default) if row else default
+
+    def set_thesis(self, config: dict[str, Any]) -> dict[str, Any]:
+        now = utc_now()
+        with self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO thesis_settings (settings_key, config_json, updated_at)
+                VALUES ('fund', ?, ?)
+                ON CONFLICT(settings_key) DO UPDATE SET config_json=excluded.config_json, updated_at=excluded.updated_at
+                """,
+                (self._json(config), now),
+            )
+        return config
+
+    def create_interview(self, *, session_id: str, company_id: str, founder_id: str, first_question: str) -> dict[str, Any]:
+        now = utc_now()
+        with self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO interview_sessions (
+                  session_id, company_id, founder_id, status, questions_json, responses_json, created_at, updated_at
+                ) VALUES (?, ?, ?, 'active', ?, '[]', ?, ?)
+                """,
+                (session_id, company_id, founder_id, self._json([first_question]), now, now),
+            )
+        return self.get_interview(session_id) or {}
+
+    def get_active_interview(self, founder_id: str) -> dict[str, Any] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM interview_sessions
+                WHERE founder_id = ? AND status = 'active'
+                ORDER BY updated_at DESC LIMIT 1
+                """,
+                (founder_id,),
+            ).fetchone()
+        return self._interview_row(row) if row else None
+
+    def get_latest_interview(self, founder_id: str) -> dict[str, Any] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM interview_sessions
+                WHERE founder_id = ?
+                ORDER BY updated_at DESC LIMIT 1
+                """,
+                (founder_id,),
+            ).fetchone()
+        return self._interview_row(row) if row else None
+
+    def get_interview(self, session_id: str) -> dict[str, Any] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM interview_sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+        return self._interview_row(row) if row else None
+
+    def update_interview(
+        self,
+        session_id: str,
+        *,
+        status: str,
+        questions: list[str],
+        responses: list[str],
+        result: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with self._connection() as connection:
+            connection.execute(
+                """
+                UPDATE interview_sessions
+                SET status=?, questions_json=?, responses_json=?, result_json=?, updated_at=?
+                WHERE session_id=?
+                """,
+                (status, self._json(questions), self._json(responses), self._json(result) if result else None, utc_now(), session_id),
+            )
+        return self.get_interview(session_id) or {}
+
     def _row(self, row: sqlite3.Row) -> dict[str, Any]:
         return {
             "company_id": row["company_id"],
@@ -184,4 +300,17 @@ class ApplicationStore:
             "trace": self._load(row["trace_json"], []),
             "error_message": row["error_message"],
             "decision": row["decision"],
+        }
+
+    def _interview_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "session_id": row["session_id"],
+            "company_id": row["company_id"],
+            "founder_id": row["founder_id"],
+            "status": row["status"],
+            "questions": self._load(row["questions_json"], []),
+            "responses": self._load(row["responses_json"], []),
+            "result": self._load(row["result_json"], None),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
         }

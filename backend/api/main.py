@@ -17,7 +17,8 @@ from pydantic import BaseModel, Field
 
 from backend.diligence_memo import ClaimValidator, DiligenceMemoPipeline, MemoSynthesizer
 from backend.diligence_memo.clients import OpenAIReasoningClient, TavilySearchClient
-from backend.scoring import evaluate_thesis_fit, match_opportunity, parse_natural_language_query, score_all_axes
+from backend.diligence_memo.interview import InterviewAgent, InterviewSession
+from backend.scoring import calculate_founder_score_from_axes, evaluate_thesis_fit, match_opportunity, parse_natural_language_query, score_all_axes
 from backend.signal_intake.deck_parser import assemble_signal_intake_output, extract_deck_claims
 
 from backend.api.document_intake import (
@@ -60,6 +61,7 @@ _diligence_pipeline = DiligenceMemoPipeline(
     validator=ClaimValidator(search_client=TavilySearchClient(), reasoning_client=OpenAIReasoningClient()),
     memo=MemoSynthesizer(),
 )
+_interview_agent = InterviewAgent()
 
 
 class AxisScoreResponse(BaseModel):
@@ -187,6 +189,28 @@ class ApplicationStatus(BaseModel):
     opportunity_url: str | None = None
 
 
+class ThesisConfig(BaseModel):
+    sectors: list[str] = Field(min_length=1)
+    stage: Literal["Pre-seed", "Seed", "Series A"]
+    geos: list[str] = Field(min_length=1)
+    check: Literal["$50K", "$100K", "$250K"]
+    ownership: Literal["0.5–1%", "1–2%", "2–5%"]
+    risk: Literal["Conservative", "Balanced", "Aggressive"]
+
+
+class InterviewResponseRequest(BaseModel):
+    response: str = Field(min_length=1, max_length=6000)
+
+
+class InterviewView(BaseModel):
+    session_id: str
+    status: Literal["active", "completed"]
+    question: str | None = None
+    question_number: int
+    total_questions: int
+    completed: bool
+
+
 DEMO_PROFILES: dict[str, dict[str, Any]] = {
     "c001": {"founder_name": "Jordan Chen", "sector": "Developer tools", "stage": "Pre-seed", "geography": "Boston, US", "one_liner": "AI-assisted code review for production distributed systems."},
     "c002": {"founder_name": "Avery Brooks", "sector": "Climate", "stage": "Pre-seed", "geography": "Portland, US", "one_liner": "Carbon footprint tracking for small businesses."},
@@ -194,6 +218,52 @@ DEMO_PROFILES: dict[str, dict[str, Any]] = {
     "c004": {"founder_name": "Marcus Lee", "sector": "Cloud infrastructure", "stage": "Pre-seed", "geography": "Seattle, US", "one_liner": "Multi-cloud workload orchestration and intelligent load balancing."},
     "c005": {"founder_name": "Sam Patel", "sector": "Consumer", "stage": "Pre-seed", "geography": "Chicago, US", "one_liner": "A restaurant discovery app for local dining."},
 }
+
+DEFAULT_THESIS_CONFIG = {
+    "sectors": ["AI infrastructure", "Developer tools", "Robotics"],
+    "stage": "Pre-seed",
+    "geos": ["North America", "Europe"],
+    "check": "$100K",
+    "ownership": "1–2%",
+    "risk": "Balanced",
+}
+
+_SECTOR_ENGINE_NAMES = {
+    "AI infrastructure": "AI/ML infrastructure",
+    "Healthcare": "Healthcare tech",
+    "Climate": "Climate tech",
+}
+_GEO_ENGINE_NAMES = {
+    "North America": ["US", "Canada"],
+    "Europe": ["Western Europe"],
+    "LATAM": ["LATAM"],
+    "Africa": ["Africa"],
+    "South Asia": ["South Asia"],
+    "East Asia": ["East Asia"],
+}
+
+
+def _check_amount(check: str) -> int:
+    return {"$50K": 50_000, "$100K": 100_000, "$250K": 250_000}[check]
+
+
+def _engine_thesis(config: dict[str, Any]) -> dict[str, Any]:
+    """Translate the investor-facing settings into the deterministic engine's shape."""
+    amount = _check_amount(config["check"])
+    geographies = [item for geo in config["geos"] for item in _GEO_ENGINE_NAMES.get(geo, [geo])]
+    return {
+        "sectors": [_SECTOR_ENGINE_NAMES.get(sector, sector) for sector in config["sectors"]],
+        "adjacent_sectors": ["Data infrastructure", "Cloud infrastructure", "DevOps", "Clean energy", "Biotech", "Insurtech"],
+        "stage": [config["stage"].casefold()],
+        "geography": geographies,
+        "check_size_min": amount // 2,
+        "check_size_max": int(amount * 1.5),
+        "requirements": {"technical_founder": True, "min_team_size": 1, "max_team_size": 5},
+    }
+
+
+def current_thesis_config() -> dict[str, Any]:
+    return store.get_thesis(DEFAULT_THESIS_CONFIG)
 
 
 def _trace(stage: str, label: str, kind: str, summary: str, started: float) -> dict[str, Any]:
@@ -235,7 +305,7 @@ def _analysis_for(signal: dict[str, Any], profile: dict[str, Any], traces: list[
     multi_axis = score_all_axes(signal)
     traces.append(_trace("scorer", "Multi-Axis Scorer", "ai", "Three independent axes scored from submitted deck and public signals.", started))
     started = time.monotonic()
-    thesis = evaluate_thesis_fit(signal)
+    thesis = evaluate_thesis_fit(signal, _engine_thesis(current_thesis_config()))
     traces.append(_trace("thesis", "Thesis Engine", "rule", thesis.rationale, started))
     started = time.monotonic()
     diligence_memo = _diligence_pipeline.run({"company_name": profile["company_name"], "sector": profile.get("sector"), "deck_claims": signal.get("deck_claims", [])})
@@ -298,6 +368,18 @@ def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "FounderScore API"}
 
 
+@app.get("/thesis", response_model=ThesisConfig)
+def get_thesis() -> ThesisConfig:
+    return ThesisConfig(**current_thesis_config())
+
+
+@app.put("/thesis", response_model=ThesisConfig)
+def update_thesis(config: ThesisConfig) -> ThesisConfig:
+    """Persist settings for future application analyses; existing decisions stay auditable."""
+    stored = store.set_thesis(config.model_dump())
+    return ThesisConfig(**stored)
+
+
 def _assemble_opportunity(company_id: str) -> OpportunityResponse:
     record = OPPORTUNITIES_DB[company_id]
     signal = record["signal"]
@@ -352,6 +434,116 @@ def get_founder_results(founder_id: str) -> FounderResultsResponse:
         f"Your current Founder Score is {score['value']}. It is based on submitted information and corroborating public signals; additional evidence can narrow its confidence range."
     )
     return FounderResultsResponse(founder_score=FounderScoreResponse(**score), narrative=narrative)
+
+
+def _session_for(record: dict[str, Any], session_record: dict[str, Any]) -> InterviewSession:
+    session = _interview_agent.start(record["signal"].get("deck_claims", []))
+    session.questions_asked = list(session_record["questions"])
+    session.responses = list(session_record["responses"])
+    return session
+
+
+def _recompute_after_interview(record: dict[str, Any], interview_result: dict[str, Any]) -> None:
+    """Recompute the persistent score without changing the independent axis judgments.
+
+    The score composition uses the documented formula.  Its interview component is C's
+    response-pattern score; the other components stay grounded in the already persisted
+    axis and per-claim trust outputs, so completing an interview cannot overwrite a
+    previously audited memo or fabricate new market evidence.
+    """
+    analysis = dict(record["analysis"])
+    multi_axis = dict(analysis["multi_axis"])
+    founder_axis = int(multi_axis["founder_axis"]["score"])
+    trust = analysis["diligence_memo"]["trust"]["claim_trust"]
+    confidence_points = {"high": 90, "medium": 60, "low": 30}
+    traction_points = [confidence_points[item["confidence"]] for item in trust if item["claim"] == "traction"]
+    traction_signal = round(sum(traction_points) / len(traction_points)) if traction_points else 50
+    idea_rating = multi_axis["idea_vs_market_axis"]["rating"]
+    founder_market_fit = {"bullish": 85, "neutral": 60, "bear": 30}[idea_rating]
+    recomputed = calculate_founder_score_from_axes(
+        founder_axis_score=founder_axis,
+        traction_signal_score=traction_signal,
+        founder_market_fit_score=founder_market_fit,
+        resilience_score=int(interview_result["resilience_score"]),
+        cold_start=bool(record["signal"].get("cold_start_flag")),
+    )
+    multi_axis["founder_score"] = recomputed.model_dump()
+    analysis["multi_axis"] = multi_axis
+    analysis["interview"] = interview_result
+    trace = list(record.get("trace", []))
+    trace.append({
+        "agent": "interview",
+        "label": "Interview Agent",
+        "kind": "ai",
+        "summary": f"{len(interview_result['questions_asked'])} adaptive questions completed · response pattern recorded · Founder Score recomputed.",
+        "ms": 1,
+    })
+    sources = list(record.get("sources", []))
+    sources.append({
+        "type": "interview",
+        "title": "Adaptive founder interview",
+        "url": f"/founders/{record['founder_id']}/results",
+        "excerpt": "Completed interview was scored by response pattern and used to recompute the persistent Founder Score.",
+        "source": "FounderScore Interview Agent",
+        "page": None,
+        "retrieved_at": None,
+    })
+    store.update_processing(record["company_id"], status="ready", analysis=analysis, trace=trace, sources=sources)
+    _cache_application(store.get(record["company_id"]) or {})
+
+
+def _interview_view(session: dict[str, Any]) -> InterviewView:
+    return InterviewView(
+        session_id=session["session_id"],
+        status=session["status"],
+        question=session["questions"][-1] if session["status"] == "active" and session["questions"] else None,
+        question_number=len(session["questions"]),
+        total_questions=5,
+        completed=session["status"] == "completed",
+    )
+
+
+@app.post("/founders/{founder_id}/interviews", response_model=InterviewView)
+def start_or_resume_interview(founder_id: str) -> InterviewView:
+    record = store.get_by_founder(founder_id)
+    if not record or not record.get("signal"):
+        raise HTTPException(status_code=404, detail="Founder application not found")
+    latest = store.get_latest_interview(founder_id)
+    if latest:
+        return _interview_view(latest)
+    session = _interview_agent.start(record["signal"].get("deck_claims", []), max_questions=5)
+    first_question = session.next_question()
+    if not first_question:
+        raise HTTPException(status_code=422, detail="No interview question could be generated")
+    created = store.create_interview(
+        session_id=f"interview-{uuid.uuid4().hex[:12]}", company_id=record["company_id"], founder_id=founder_id, first_question=first_question
+    )
+    return _interview_view(created)
+
+
+@app.post("/interviews/{session_id}/responses", response_model=InterviewView)
+def record_interview_response(session_id: str, request: InterviewResponseRequest) -> InterviewView:
+    saved = store.get_interview(session_id)
+    if not saved:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+    if saved["status"] == "completed":
+        return _interview_view(saved)
+    record = store.get(saved["company_id"])
+    if not record or not record.get("signal"):
+        raise HTTPException(status_code=404, detail="Application not found")
+    session = _session_for(record, saved)
+    try:
+        session.record_response(request.response)
+        next_question = session.next_question()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if next_question:
+        updated = store.update_interview(session_id, status="active", questions=session.questions_asked, responses=session.responses)
+        return _interview_view(updated)
+    result = session.result()
+    updated = store.update_interview(session_id, status="completed", questions=session.questions_asked, responses=session.responses, result=result)
+    _recompute_after_interview(record, result)
+    return _interview_view(updated)
 
 
 @app.post("/opportunities/{company_id}/decision")

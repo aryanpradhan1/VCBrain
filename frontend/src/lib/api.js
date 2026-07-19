@@ -58,3 +58,27 @@ export async function getApplicationStatus(id) {
   await delay(600)
   return { company_id: id, founder_id: "f-002", company_name: "Demo company", status: "ready", opportunity_url: "/opportunities/c-002" }
 }
+
+export async function getThesis() {
+  if (BASE) return real("/thesis")
+  await delay(300)
+  return { sectors: ["AI infrastructure", "Developer tools", "Robotics"], stage: "Pre-seed", geos: ["North America", "Europe"], check: "$100K", ownership: "1–2%", risk: "Balanced" }
+}
+
+export async function saveThesis(config) {
+  if (BASE) return real("/thesis", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) })
+  await delay(450)
+  return config
+}
+
+export async function startInterview(founderId) {
+  if (BASE) return real(`/founders/${founderId}/interviews`, { method: "POST" })
+  await delay(450)
+  return { session_id: "demo-interview", status: "active", question: "What is the strongest evidence that customers want what you are building?", question_number: 1, total_questions: 5, completed: false }
+}
+
+export async function respondToInterview(sessionId, response) {
+  if (BASE) return real(`/interviews/${sessionId}/responses`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ response }) })
+  await delay(500)
+  return { session_id: sessionId, status: "completed", question: null, question_number: 5, total_questions: 5, completed: true }
+}

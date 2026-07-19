@@ -181,6 +181,14 @@ and evidence trail without inventing profile fields or storing raw scraped pages
 
 // GET /applications/:company_id — safe progress view for the applicant
 { "company_id": "app-…", "founder_id": "founder-…", "company_name": "string", "status": "queued|processing|ready|failed", "error_message": "string|null" }
+
+// GET /thesis and PUT /thesis — shared fund configuration for future analyses
+{ "sectors": ["AI infrastructure"], "stage": "Pre-seed", "geos": ["North America"], "check": "$100K", "ownership": "1–2%", "risk": "Balanced" }
+
+// POST /founders/:founder_id/interviews — starts or resumes an adaptive session
+// POST /interviews/:session_id/responses — { "response": "string" }
+// Founder-safe response only: it deliberately omits response_pattern and resilience_score.
+{ "session_id": "interview-…", "status": "active|completed", "question": "string|null", "question_number": 1, "total_questions": 5, "completed": false }
 ```
 
 `GET /opportunities/:id` may additionally include the following API-assembled fields:
@@ -203,6 +211,10 @@ Source rule: use founder-confirmed URLs plus a bounded company-name press search
 URLs, timestamps, extracted fields, and short evidence excerpts only — never raw public
 HTML/pages. Use an uploaded headshot or a consented public avatar; never guess identity
 from a search result.
+
+Interview rule: store the question/answer session privately, score it only by the locked
+response-pattern output, then recompute the persistent Founder Score with that resilience
+component. The founder-facing endpoints continue to expose only score and narrative.
 
 ## Fixtures — 3 archetypes, every screen must handle all three
 
