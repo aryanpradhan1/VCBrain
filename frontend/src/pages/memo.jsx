@@ -212,12 +212,11 @@ function SocialIcon({ href, icon: Icon, label }) {
 function FounderCard({ founder }) {
   return (
     <div className="flex gap-4 rounded-xl border border-border bg-card p-4">
-      <img
-        src={founder.avatar}
-        alt={founder.name}
-        loading="lazy"
-        className="size-16 shrink-0 rounded-xl object-cover shadow-sm"
-      />
+      {founder.avatar ? (
+        <img src={founder.avatar} alt={founder.name} loading="lazy" className="size-16 shrink-0 rounded-xl object-cover shadow-sm" />
+      ) : (
+        <span className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-xl font-semibold text-white shadow-sm">{founder.name?.[0] || "F"}</span>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-sm font-semibold tracking-tight">{founder.name}</span>

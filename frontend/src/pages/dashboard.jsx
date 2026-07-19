@@ -12,7 +12,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AvatarCircles } from "@/components/magicui/avatar-circles"
 import { AxisDots, ChannelBadge, ColdStartBadge } from "@/components/shared/chips"
 import { Page, stagger } from "@/components/shared/page"
 import { ScoreBadge } from "@/components/shared/score-badge"
@@ -74,6 +73,23 @@ function TrustDots({ claims }) {
   )
 }
 
+function FounderMarks({ founders }) {
+  if (!founders?.length) return null
+  return (
+    <span className="flex -space-x-1.5" title={founders.map((founder) => founder.name).join(", ")}>
+      {founders.slice(0, 3).map((founder, index) => (
+        founder.avatar ? (
+          <img key={founder.name} src={founder.avatar} alt={founder.name} className="size-6 rounded-full border-2 border-card object-cover" style={{ zIndex: 3 - index }} />
+        ) : (
+          <span key={founder.name} className="flex size-6 items-center justify-center rounded-full border-2 border-card bg-slate-800 text-[9px] font-bold text-white" style={{ zIndex: 3 - index }}>
+            {founder.name?.[0] || "F"}
+          </span>
+        )
+      ))}
+    </span>
+  )
+}
+
 function Row({ opp }) {
   return (
     <motion.li variants={stagger.item}>
@@ -82,7 +98,7 @@ function Row({ opp }) {
         className="group grid gap-3 px-4 py-4 transition-colors hover:bg-slate-50/70 sm:grid-cols-[minmax(0,1fr)_126px] sm:gap-6 sm:px-5 lg:grid-cols-[minmax(0,1fr)_134px_126px]">
         <div className="flex min-w-0 gap-3">
         <span
-          className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-sm font-bold text-white sm:hidden">
+          className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-sm font-bold text-white">
           {opp.company_name[0]}
         </span>
         <div className="min-w-0 flex-1 space-y-1.5">
@@ -99,12 +115,7 @@ function Row({ opp }) {
           </div>
           <p className="truncate text-sm text-muted-foreground">{pitchOf(opp)}</p>
           <div className="flex flex-wrap items-center gap-2">
-            {opp.enrichment?.founders && (
-              <AvatarCircles
-                size={22}
-                avatarUrls={opp.enrichment.founders.map((f) => ({ imageUrl: f.avatar, alt: `${f.name} — ${f.role}` }))}
-              />
-            )}
+            <FounderMarks founders={opp.enrichment?.founders} />
             <SignalIcons signals={opp.public_signals} />
             <TrustDots claims={opp.claim_trust} />
           </div>
