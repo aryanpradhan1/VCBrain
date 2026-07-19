@@ -15,5 +15,8 @@ frontend/dist/
 frontend/.vite/
 backend/api/founderscore.sqlite3
 
+# Local application memory and uploaded founder materials
+backend/data/
+
 # OS junk
 .DS_Store

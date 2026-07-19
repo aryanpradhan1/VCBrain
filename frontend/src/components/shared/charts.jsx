@@ -13,6 +13,13 @@ const tiers = [
 
 export function MarketChart({ market, className }) {
   if (!market) return null
+  if (![market.tam, market.sam, market.som].every((value) => Number.isFinite(value) && value > 0)) {
+    return (
+      <p className={cn("text-sm leading-relaxed text-foreground/80", className)}>
+        {market.basis ?? "No market-sizing evidence was supplied."}
+      </p>
+    )
+  }
   const { unit = "$B", basis } = market
   const H = 190
   const maxR = 82
@@ -45,7 +52,7 @@ export function MarketChart({ market, className }) {
             <span className="size-3 shrink-0 rounded-full" style={{ background: t.fill, boxShadow: "inset 0 0 0 1px rgb(0 0 0 / 0.06)" }} />
             <span className="w-11 text-xs font-semibold">{t.label}</span>
             <span className="text-sm font-semibold tabular-nums">
-              {unit.startsWith("$") ? `$${market[t.key]}B` : `${market[t.key]}${unit}`}
+              {market.display?.[t.key] ?? (unit.startsWith("$") ? `$${market[t.key]}B` : `${market[t.key]}${unit}`)}
             </span>
             <span className="text-[11px] text-muted-foreground">
               {t.key === "tam" ? "total market" : t.key === "sam" ? "serviceable" : "obtainable (3yr)"}

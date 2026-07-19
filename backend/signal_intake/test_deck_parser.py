@@ -4,10 +4,11 @@ The OpenAI call is mocked so these run without network access or an API key. See
 deck_parser.py's __main__ block for a real end-to-end run against the fixture deck.
 """
 import json
+import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from . import deck_parser
 from .schemas import SignalIntakeOutput
@@ -79,6 +80,22 @@ class AssembleSignalIntakeOutputTests(unittest.TestCase):
         self.assertEqual(len(output.deck_claims), 5)
         # public_signals defaults to zeroed structure — outbound module fills this in later
         self.assertEqual(output.public_signals.github.repos, 0)
+
+
+class RecordDeckClaimsInMemoryTests(unittest.TestCase):
+    def test_saves_signal_and_recomputes_score(self):
+        client = _mock_openai_client(FAKE_CLAIMS_PAYLOAD)
+        claims = deck_parser.extract_deck_claims(FIXTURE_PATH, client=client)
+        output = deck_parser.assemble_signal_intake_output(
+            founder_id="founder_1", company_id="company_1", deck_claims=claims
+        )
+
+        fake_db = MagicMock()
+        with patch.dict(sys.modules, {"backend.api.db": fake_db}):
+            deck_parser.record_deck_claims_in_memory(output)
+
+        fake_db.save_signal.assert_called_once_with("founder_1", "deck", output.model_dump())
+        fake_db.recompute_founder_score.assert_called_once_with("founder_1")
 
 
 if __name__ == "__main__":

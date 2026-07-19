@@ -11,6 +11,7 @@ import {
   UserSearch,
   X,
 } from "lucide-react"
+import { assetUrl } from "@/lib/api"
 
 // Every citation in the product opens here — sources always lead somewhere.
 // Content is a faithful dummy of what the real pipeline stores (deck slide
@@ -136,6 +137,37 @@ function NewsCard({ source }) {
   )
 }
 
+function StructuredSource({ record }) {
+  const image = assetUrl(record.preview_url || record.image_url)
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {image && (
+        <img src={image} alt="" className="h-44 w-full object-contain bg-slate-50" onError={(event) => { event.currentTarget.style.display = "none" }} />
+      )}
+      <div className="p-4">
+        <div className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">{record.source || "Source"}{record.page ? ` · slide ${record.page}` : ""}</div>
+        <div className="mt-1 text-sm font-semibold leading-snug">{record.title}</div>
+        {record.excerpt && <p className="mt-2 text-xs leading-relaxed text-slate-600">{record.excerpt}</p>}
+        {record.url && (
+          <a href={assetUrl(record.url)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:underline">
+            Open original source <ExternalLink className="size-3" />
+          </a>
+        )}
+        {record.slides?.length > 0 && (
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {record.slides.map((slide) => (
+              <a key={slide.page} href={assetUrl(slide.preview_url || slide.url)} target="_blank" rel="noreferrer" className="overflow-hidden rounded-md border border-slate-200 bg-slate-50 text-center text-[10px] font-medium text-slate-600 hover:border-slate-300">
+                {slide.preview_url && <img src={assetUrl(slide.preview_url)} alt={`Slide ${slide.page}`} className="aspect-[4/3] w-full object-cover object-top" />}
+                <span className="block py-1">Slide {slide.page}</span>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function GenericCard({ citation }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 text-[13px] leading-relaxed shadow-sm">
@@ -192,13 +224,15 @@ export function SourceDrawerProvider({ children }) {
                 </button>
               </div>
 
-              {type === "deck" && <DeckSlide citation={source.citation} opp={source.opp} />}
-              {type === "github" && <GithubCard opp={source.opp} />}
-              {type === "interview" && <InterviewCard citation={source.citation} />}
-              {type === "news" && <NewsCard source={source} />}
-              {(type === "launch" || type === "paper" || type === "person" || type === "generic") && (
-                <GenericCard citation={source.citation} />
-              )}
+              {source.record ? <StructuredSource record={source.record} /> : <>
+                {type === "deck" && <DeckSlide citation={source.citation} opp={source.opp} />}
+                {type === "github" && <GithubCard opp={source.opp} />}
+                {type === "interview" && <InterviewCard citation={source.citation} />}
+                {type === "news" && <NewsCard source={source} />}
+                {(type === "launch" || type === "paper" || type === "person" || type === "generic") && (
+                  <GenericCard citation={source.citation} />
+                )}
+              </>}
             </motion.aside>
           </>
         )}

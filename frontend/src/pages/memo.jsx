@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Brain,
   ChartPie,
+  Calculator,
   CircleCheck,
   ExternalLink,
   FileText,
@@ -38,7 +39,7 @@ import { SignalChips } from "@/components/shared/signal-chips"
 import { useSources } from "@/components/shared/source-drawer"
 import { ErrorBanner } from "@/components/shared/states"
 import { TrendArrow } from "@/components/shared/trend"
-import { getOpportunity } from "@/lib/api"
+import { assetUrl, getOpportunity } from "@/lib/api"
 import { useAsync } from "@/lib/use-async"
 import { cn } from "@/lib/utils"
 
@@ -46,13 +47,18 @@ import { cn } from "@/lib/utils"
 function CitationChips({ citations, opp }) {
   const { open } = useSources()
   if (!citations?.length) return null
+  const sourceFor = (citation) => {
+    const page = citation.match(/(?:deck[ _-]?slide|slide)[_\s-]*(\d+)/i)?.[1]
+    if (page) return opp.sources?.find((source) => source.type === "deck" && String(source.page) === page)
+    return opp.sources?.find((source) => source.title?.toLowerCase().includes(citation.toLowerCase()))
+  }
   return (
     <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border pt-3">
       {citations.map((c) => (
         <button
           key={c}
           type="button"
-          onClick={() => open({ citation: c, opp })}
+          onClick={() => open({ citation: c, opp, record: sourceFor(c) })}
           className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-full bg-secondary/70 px-2.5 py-1 text-[11px] font-medium text-foreground/70 transition-colors hover:bg-secondary hover:text-foreground"
           title={`Open source: ${c}`}>
           <Quote className="size-3 shrink-0 text-muted-foreground" />
@@ -189,6 +195,36 @@ function Snapshot({ e }) {
   )
 }
 
+function CalculationChecks({ checks, opp }) {
+  const { open } = useSources()
+  if (!checks?.length) return null
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {checks.map((check) => {
+        const source = opp.sources?.find((item) => item.type === "deck" && String(item.page) === String(check.source_slide))
+        const matches = check.status === "consistent"
+        return (
+          <button
+            key={`${check.title}-${check.source_slide}`}
+            type="button"
+            onClick={() => open({ citation: `deck_slide_${check.source_slide}`, opp, record: source })}
+            className="rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-slate-50">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">{check.title}</span>
+              <Badge variant={matches ? "positive" : "negative"}>{matches ? "Arithmetic checks out" : "Needs reconciliation"}</Badge>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg bg-secondary/65 p-2.5"><span className="block text-[10px] font-medium text-muted-foreground uppercase">Deck says</span><span className="mt-0.5 block text-xs font-semibold">{check.reported}</span></div>
+              <div className="rounded-lg bg-sky-50/70 p-2.5"><span className="block text-[10px] font-medium text-sky-700 uppercase">Recomputed</span><span className="mt-0.5 block text-xs font-semibold text-sky-950">{check.recomputed}</span></div>
+            </div>
+            <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">{check.note}</p>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Founders ──────────────────────────────────────────────────────────────
 function SocialIcon({ href, icon: Icon, label }) {
   if (!href) return null
@@ -207,12 +243,11 @@ function SocialIcon({ href, icon: Icon, label }) {
 function FounderCard({ founder }) {
   return (
     <div className="flex gap-4 rounded-xl border border-border bg-card p-4">
-      <img
-        src={founder.avatar}
-        alt={founder.name}
-        loading="lazy"
-        className="size-16 shrink-0 rounded-xl object-cover shadow-sm"
-      />
+      {founder.avatar ? (
+        <img src={assetUrl(founder.avatar)} alt={founder.name} loading="lazy" className="size-16 shrink-0 rounded-xl object-cover shadow-sm" />
+      ) : (
+        <span className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-xl font-semibold text-white shadow-sm">{founder.name?.[0] || "F"}</span>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-sm font-semibold tracking-tight">{founder.name}</span>
@@ -303,19 +338,58 @@ function ConfidenceMeter({ confidence }) {
 
 function TrustList({ claims, opp }) {
   const { open } = useSources()
+  const confidenceRank = { low: 0, medium: 1, high: 2 }
+  const grouped = Object.values(
+    (claims ?? []).reduce((groups, claim) => {
+      const key = claim.claim || "other"
+      const current = groups[key]
+      if (!current) {
+        groups[key] = { ...claim, count: 1 }
+        return groups
+      }
+      current.count += 1
+      // The investor-facing overview should lead with the weakest finding,
+      // while the complete per-claim record remains in the persisted response.
+      if ((confidenceRank[claim.confidence] ?? 1) < (confidenceRank[current.confidence] ?? 1)) {
+        groups[key] = { ...claim, count: current.count }
+      }
+      return groups
+    }, {}),
+  ).sort((a, b) => (confidenceRank[a.confidence] ?? 1) - (confidenceRank[b.confidence] ?? 1))
+
+  const evidencePreview = (evidence) => {
+    const withoutUrls = String(evidence ?? "")
+      .replace(/\s*Sources?:\s*https?:\/\/\S+(?:\s*[;,|]\s*https?:\/\/\S+)*/gi, "")
+      .replace(/https?:\/\/\S+/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+    return withoutUrls.length > 260 ? `${withoutUrls.slice(0, 257).trimEnd()}…` : withoutUrls
+  }
+
+  const sourceFor = (claim) => {
+    const text = `${claim.claim} ${claim.evidence}`
+    const slide = text.match(/(?:deck[ _-]?slide|slide)[ _-]*(\d+)/i)?.[1]
+    if (slide) return opp.sources?.find((source) => source.type === "deck" && String(source.page) === slide)
+    const url = text.match(/https?:\/\/[^\s,;)]+/i)?.[0]
+    return url ? opp.sources?.find((source) => source.url === url) : undefined
+  }
+
   return (
     <Card className="gap-0 py-0">
       <CardContent className="px-0">
         <ul>
-          {claims.map((c, i) => (
+          {grouped.map((c, i) => (
             <li key={c.claim}>
               {i > 0 && <Separator />}
               <button
                 type="button"
-                onClick={() => open({ citation: `${c.claim}: ${c.evidence}`, opp })}
+                onClick={() => open({ citation: `${c.claim}: ${c.evidence}`, opp, record: sourceFor(c) })}
                 className="flex w-full cursor-pointer items-start gap-4 px-5 py-3.5 text-left transition-colors hover:bg-secondary/40">
-                <span className="w-24 shrink-0 pt-0.5 text-sm font-medium capitalize">{c.claim.replaceAll("_", " ")}</span>
-                <p className="flex-1 text-sm leading-relaxed text-foreground/80">{c.evidence}</p>
+                <span className="w-28 shrink-0 pt-0.5 text-sm font-medium capitalize">
+                  {c.claim.replaceAll("_", " ")}
+                  {c.count > 1 && <span className="mt-1 block text-[10px] font-normal text-muted-foreground">{c.count} checks</span>}
+                </span>
+                <p className="flex-1 text-sm leading-relaxed text-foreground/80">{evidencePreview(c.evidence)}</p>
                 <ConfidenceMeter confidence={c.confidence} />
               </button>
             </li>
@@ -461,7 +535,7 @@ function NewsList({ news, opp }) {
         <li key={n.title}>
           <button
             type="button"
-            onClick={() => open({ type: "news", title: n.title, newsSource: n.source, date: n.date, opp })}
+            onClick={() => open({ type: "news", title: n.title, newsSource: n.source, date: n.date, opp, record: opp.sources?.find((source) => source.url === n.url) })}
             className="group flex w-full cursor-pointer items-center gap-2 text-left">
             <Newspaper className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate text-[13px] font-medium group-hover:underline">{n.title}</span>
@@ -472,6 +546,28 @@ function NewsList({ news, opp }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+function SourceLedger({ sources, opp }) {
+  const { open } = useSources()
+  if (!sources?.length) return null
+  const deckSources = sources.filter((source) => source.type === "deck")
+  const uniqueSources = sources.filter((source, index) => source.type !== "deck" && sources.findIndex((candidate) => candidate.type === source.type && candidate.url === source.url) === index)
+  const rows = [
+    ...uniqueSources,
+    ...(deckSources.length ? [{ type: "deck", title: `Pitch deck · ${deckSources.length} slides`, url: deckSources[0].url, source: "Founder-uploaded document", excerpt: "Open individual slides from citations, or browse deck previews here.", slides: deckSources }] : []),
+  ]
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      {rows.map((source, index) => (
+        <button key={`${source.url}-${source.title}-${index}`} type="button" onClick={() => open({ type: source.type, citation: source.title, opp, record: source })} className="flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-slate-50">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-[10px] font-bold uppercase text-muted-foreground">{source.type?.slice(0, 2) || "S"}</span>
+          <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{source.title}</span><span className="block truncate text-[11px] text-muted-foreground">{source.source}{source.page ? ` · slide ${source.page}` : ""}</span></span>
+          <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -554,6 +650,14 @@ export default function Memo() {
               </Section>
             </motion.div>
 
+            {e?.calculation_checks?.length > 0 && (
+              <motion.div variants={stagger.item}>
+                <Section icon={Calculator} title="Model checks" sub="Deck arithmetic recomputed separately from external validation">
+                  <CalculationChecks checks={e.calculation_checks} opp={opp} />
+                </Section>
+              </motion.div>
+            )}
+
             {e?.agent_trace && (
               <motion.div variants={stagger.item}>
                 <Section
@@ -625,6 +729,14 @@ export default function Memo() {
                 <TrustList claims={opp.claim_trust} opp={opp} />
               </Section>
             </motion.div>
+
+            {opp.sources?.length > 0 && (
+              <motion.div variants={stagger.item}>
+                <Section icon={FileText} title="Source ledger" sub="Submitted files and bounded public references retained with the analysis">
+                  <SourceLedger sources={opp.sources} opp={opp} />
+                </Section>
+              </motion.div>
+            )}
 
             <motion.div variants={stagger.item}>
               <Section icon={FileText} title="Investment memo" sub="Appendix-1 structure — flagged fields never fabricated">

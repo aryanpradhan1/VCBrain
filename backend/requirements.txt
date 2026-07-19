@@ -3,3 +3,8 @@ uvicorn
 python-dotenv
 openai
 tavily-python
+python-multipart
+pypdf
+PyMuPDF
+python-pptx
+python-docx

@@ -4,6 +4,7 @@ Each axis scored independently with LLM reasoning, never averaged.
 """
 
 import os
+import re
 from typing import Dict, List, Any, Literal
 from openai import OpenAI
 from pydantic import BaseModel
@@ -154,6 +155,7 @@ INSTRUCTIONS:
 4. Citations: Specific evidence sources
    - Format: ["github_commit_history", "deck_slide_3", "devpost_launches", "arxiv_papers"]
    - Be precise — cite what you actually used
+   - Never cite GitHub, Devpost, or arXiv when that signal is zero/absent.
 
 Respond in this exact JSON format:
 {{
@@ -180,6 +182,7 @@ Respond in this exact JSON format:
     import json
     parsed = json.loads(result)
 
+    parsed["citations"] = _supported_citations(parsed.get("citations", []), signal_data)
     return AxisScore(**parsed)
 
 
@@ -274,6 +277,7 @@ Respond in this exact JSON format:
     import json
     parsed = json.loads(result)
 
+    parsed["citations"] = _supported_citations(parsed.get("citations", []), signal_data)
     return AxisRating(**parsed)
 
 
@@ -379,7 +383,32 @@ Respond in this exact JSON format:
     import json
     parsed = json.loads(result)
 
+    parsed["citations"] = _supported_citations(parsed.get("citations", []), signal_data)
     return AxisRating(**parsed)
+
+
+def _supported_citations(citations: list[str], signal_data: Dict[str, Any]) -> list[str]:
+    """Drop hallucinated zero-signal citations before they cross the API boundary."""
+    signals = signal_data.get("public_signals", {})
+    github = signals.get("github", {})
+    devpost = signals.get("devpost_hn", {})
+    arxiv = signals.get("arxiv", {})
+    slides = {str(item.get("source_slide")) for item in signal_data.get("deck_claims", [])}
+    kept = []
+    for citation in citations:
+        normalized = str(citation).casefold()
+        if "github" in normalized and not github.get("repos", 0):
+            continue
+        if ("devpost" in normalized or "launch" in normalized) and not devpost.get("launches", 0):
+            continue
+        if ("arxiv" in normalized or "paper" in normalized) and not arxiv.get("papers", 0):
+            continue
+        slide_match = re.search(r"slide[_\s-]*(\d+)", normalized)
+        if slide_match and slide_match.group(1) not in slides:
+            continue
+        if citation not in kept:
+            kept.append(citation)
+    return kept
 
 
 def score_all_axes(signal_data: Dict[str, Any]) -> MultiAxisOutput:
