@@ -28,6 +28,7 @@ from backend.api.document_intake import (
     copy_uploaded_file,
     extract_document,
 )
+from backend.api.presentation import build_enrichment, concise_memo, relevant_sources
 from backend.api.source_enrichment import fetch_site_metadata, github_profile_signal, search_press, submitted_link_sources, valid_public_url
 from backend.api.store import ApplicationStore
 
@@ -128,6 +129,7 @@ class SourceRecord(BaseModel):
     url: str
     excerpt: str = ""
     image_url: str | None = None
+    preview_url: str | None = None
     source: str = ""
     page: int | None = None
     retrieved_at: str | None = None
@@ -190,6 +192,7 @@ class ApplicationStatus(BaseModel):
     founder_id: str
     company_name: str
     status: str
+    stage: str | None = None
     error_message: str | None = None
     opportunity_url: str | None = None
 
@@ -392,15 +395,21 @@ def _assemble_opportunity(company_id: str) -> OpportunityResponse:
     multi_axis = analysis["multi_axis"]
     diligence_memo = analysis["diligence_memo"]
     profile = record["profile"]
-    photo_url = profile.get("photo_url")
-    enrichment = _default_enrichment(profile, signal, photo_url)
-    enrichment["agent_trace"] = record.get("trace", [])
+    documents = record.get("documents", [])
+    preview_by_page = {document.get("page"): document.get("preview_url") for document in documents}
+    sources = [
+        {**source, "preview_url": source.get("preview_url") or preview_by_page.get(source.get("page"))}
+        for source in record.get("sources", [])
+    ]
+    sources = relevant_sources(record["company_name"], sources, profile.get("website"))
+    enrichment = build_enrichment(profile, signal, sources, record.get("trace", []))
     enrichment["news"] = [
         {"title": source["title"], "source": source.get("source") or "Public source", "date": (source.get("retrieved_at") or "")[:10], "url": source.get("url")}
         for source in record.get("sources", [])
         if source.get("type") == "news"
     ]
     verdict = record.get("decision") or analysis["verdict"]
+    concise = concise_memo(record["company_name"], enrichment, analysis)
     return OpportunityResponse(
         founder_id=record["founder_id"], company_id=company_id, company_name=record["company_name"],
         sourcing_channel=signal["sourcing_channel"], cold_start_flag=signal["cold_start_flag"],
@@ -409,13 +418,13 @@ def _assemble_opportunity(company_id: str) -> OpportunityResponse:
         market_axis=AxisRatingResponse(**multi_axis["market_axis"]),
         idea_vs_market_axis=AxisRatingResponse(**multi_axis["idea_vs_market_axis"]),
         claim_trust=[ClaimTrust(**item) for item in diligence_memo["trust"]["claim_trust"]],
-        memo=MemoResponse(required=MemoRequired(**diligence_memo["memo"]["required"]), optional_or_flagged=MemoOptional(**diligence_memo["memo"]["optional_or_flagged"])),
+        memo=MemoResponse(required=MemoRequired(**concise["required"]), optional_or_flagged=MemoOptional(**concise["optional_or_flagged"])),
         adversarial_view=AdversarialView(**diligence_memo["adversarial_view"]),
         portfolio_check=PortfolioCheck(**diligence_memo["portfolio_check"]),
         verdict=verdict,
         amount_recommended=diligence_memo["amount_recommended"] if verdict == "approve" else 0,
-        thesis=analysis["thesis"], enrichment=enrichment, sources=record.get("sources", []),
-        documents=record.get("documents", []), processing_trace=record.get("trace", []), status=record["status"],
+        thesis=analysis["thesis"], enrichment=enrichment, sources=sources,
+        documents=documents, processing_trace=record.get("trace", []), status=record["status"],
     )
 
 
@@ -583,18 +592,23 @@ def _process_application(company_id: str) -> None:
     if not record:
         return
     started = time.monotonic()
-    traces = [{"agent": "screen", "label": "Screen", "kind": "rule", "summary": "Required founder identity, company name, and supporting document received.", "ms": 1}]
+    traces = [{"agent": "screen", "label": "Screen", "kind": "rule", "summary": "Required founder identity, company name, and supporting document received.", "ms": 1, "stage": "queued"}]
     try:
+        traces.append({"agent": "intake", "label": "Signal Intake", "kind": "ai", "summary": "Reading pages, slide text, and embedded deck images.", "ms": 1, "stage": "reading_deck"})
         store.update_processing(company_id, status="processing", trace=traces)
         document = record["documents"][0]
         document_path = UPLOAD_ROOT / document["stored_name"]
         text, extracted = extract_document(document_path, MEDIA_ROOT, company_id)
         for item in extracted:
             item["file_url"] = document.get("file_url")
-        traces.append(_trace("intake", "Signal Intake", "ai", f"Extracted text and source references from {len(extracted)} page(s) or slide(s).", started))
+            item["stored_name"] = document.get("stored_name")
+        traces.append({**_trace("intake", "Signal Intake", "ai", f"Read {len(extracted)} page(s) or slide(s); extracting investment claims next.", started), "stage": "extracting_claims"})
+        store.update_processing(company_id, status="processing", documents=extracted, trace=traces)
         claims = extract_deck_claims(document_path)
         signal_model = assemble_signal_intake_output(founder_id=record["founder_id"], company_id=company_id, deck_claims=claims, cold_start_flag=False)
         signal = signal_model.model_dump()
+        traces.append({"agent": "intake", "label": "Signal Intake", "kind": "rule", "summary": f"{len(claims)} deck claims extracted; checking supplied profiles and company-specific coverage.", "ms": 1, "stage": "checking_sources"})
+        store.update_processing(company_id, status="processing", signal=signal, documents=extracted, trace=traces)
         github, github_source = github_profile_signal(record["profile"].get("github"))
         signal["public_signals"]["github"] = github
         sources = submitted_link_sources(record["profile"])
@@ -603,13 +617,61 @@ def _process_application(company_id: str) -> None:
         site_source = fetch_site_metadata(record["profile"].get("website"))
         if site_source:
             sources.append(site_source)
-        sources.extend(search_press(record["company_name"]))
-        sources.extend({"type": "deck", "title": item["title"], "url": document["file_url"], "excerpt": item.get("text", ""), "source": "Founder-uploaded document", "page": item.get("page")} for item in extracted)
+        sources.extend(search_press(record["company_name"], record["profile"].get("website")))
+        sources.extend({
+            "type": "deck", "title": item["title"], "url": document["file_url"], "excerpt": item.get("text", ""),
+            "source": "Founder-uploaded document", "page": item.get("page"), "preview_url": item.get("preview_url"),
+        } for item in extracted)
+        traces.append({"agent": "scorer", "label": "Multi-Axis Scorer", "kind": "ai", "summary": "Scoring independent founder, market, and idea-versus-market axes.", "ms": 1, "stage": "scoring"})
+        store.update_processing(company_id, status="processing", signal=signal, documents=extracted, sources=sources, trace=traces)
         analysis = _analysis_for(signal, record["profile"], traces)
         store.update_processing(company_id, status="ready", signal=signal, analysis=analysis, documents=extracted, sources=sources, trace=traces)
         _cache_application(store.get(company_id) or {})
     except Exception as exc:
         store.update_processing(company_id, status="failed", trace=traces, error_message=str(exc)[:500])
+
+
+def _refresh_existing_analysis(company_id: str) -> None:
+    """Re-run public signals and reasoning for a completed record after pipeline fixes."""
+    record = store.get(company_id)
+    if not record or not record.get("signal"):
+        return
+    profile = dict(record["profile"])
+    signal = dict(record["signal"])
+    traces = list(record.get("trace", []))
+    traces.append({"agent": "intake", "label": "Signal Intake", "kind": "ai", "summary": "Refreshing submitted profiles and company-specific source evidence.", "ms": 1, "stage": "checking_sources"})
+    try:
+        store.update_processing(company_id, status="processing", signal=signal, trace=traces)
+        existing_sources = [source for source in record.get("sources", []) if source.get("type") == "deck"]
+        discovered = build_enrichment(profile, signal, record.get("sources", []), traces).get("website")
+        if discovered and not profile.get("website"):
+            profile["website"] = discovered
+        github, github_source = github_profile_signal(profile.get("github"))
+        signal["public_signals"]["github"] = github
+        sources = submitted_link_sources(profile)
+        if github_source:
+            sources.append(github_source)
+        site_source = fetch_site_metadata(profile.get("website"))
+        if site_source:
+            sources.append(site_source)
+        sources.extend(search_press(record["company_name"], profile.get("website")))
+        sources.extend(existing_sources)
+        traces.append({"agent": "scorer", "label": "Multi-Axis Scorer", "kind": "ai", "summary": "Recomputing independent axes with refreshed public signals and corrected thesis logic.", "ms": 1, "stage": "scoring"})
+        store.upsert_application(company_id=company_id, founder_id=record["founder_id"], company_name=record["company_name"], status="processing", profile=profile, documents=record["documents"], sources=sources, signal=signal, trace=traces)
+        analysis = _analysis_for(signal, profile, traces)
+        store.update_processing(company_id, status="ready", signal=signal, analysis=analysis, sources=sources, trace=traces)
+        _cache_application(store.get(company_id) or {})
+    except Exception as exc:
+        store.update_processing(company_id, status="failed", trace=traces, error_message=str(exc)[:500])
+
+
+@app.post("/opportunities/{company_id}/reprocess", response_model=ApplicationSubmission, status_code=202)
+def reprocess_opportunity(company_id: str, background_tasks: BackgroundTasks) -> ApplicationSubmission:
+    record = store.get(company_id)
+    if not record or not record.get("signal"):
+        raise HTTPException(status_code=404, detail="Completed opportunity not found")
+    background_tasks.add_task(_refresh_existing_analysis, company_id)
+    return ApplicationSubmission(company_id=company_id, founder_id=record["founder_id"], status="queued", status_url=f"/applications/{company_id}")
 
 
 @app.post("/applications", response_model=ApplicationSubmission, status_code=202)
@@ -667,7 +729,8 @@ def application_status(company_id: str) -> ApplicationStatus:
     record = store.get(company_id)
     if not record:
         raise HTTPException(status_code=404, detail="Application not found")
-    return ApplicationStatus(company_id=company_id, founder_id=record["founder_id"], company_name=record["company_name"], status=record["status"], error_message=record["error_message"], opportunity_url=f"/opportunities/{company_id}" if record["status"] == "ready" else None)
+    stage = record["trace"][-1].get("stage") if record.get("trace") else None
+    return ApplicationStatus(company_id=company_id, founder_id=record["founder_id"], company_name=record["company_name"], status=record["status"], stage=stage, error_message=record["error_message"], opportunity_url=f"/opportunities/{company_id}" if record["status"] == "ready" else None)
 
 
 if __name__ == "__main__":

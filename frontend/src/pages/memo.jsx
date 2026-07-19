@@ -47,7 +47,7 @@ function CitationChips({ citations, opp }) {
   const { open } = useSources()
   if (!citations?.length) return null
   const sourceFor = (citation) => {
-    const page = citation.match(/(?:deck[ _-]?slide|slide)\s*(\d+)/i)?.[1]
+    const page = citation.match(/(?:deck[ _-]?slide|slide)[_\s-]*(\d+)/i)?.[1]
     if (page) return opp.sources?.find((source) => source.type === "deck" && String(source.page) === page)
     return opp.sources?.find((source) => source.title?.toLowerCase().includes(citation.toLowerCase()))
   }
@@ -482,9 +482,15 @@ function NewsList({ news, opp }) {
 function SourceLedger({ sources, opp }) {
   const { open } = useSources()
   if (!sources?.length) return null
+  const deckSources = sources.filter((source) => source.type === "deck")
+  const uniqueSources = sources.filter((source, index) => source.type !== "deck" && sources.findIndex((candidate) => candidate.type === source.type && candidate.url === source.url) === index)
+  const rows = [
+    ...uniqueSources,
+    ...(deckSources.length ? [{ type: "deck", title: `Pitch deck · ${deckSources.length} slides`, url: deckSources[0].url, source: "Founder-uploaded document", excerpt: "Open individual slides from citations, or browse deck previews here.", slides: deckSources }] : []),
+  ]
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      {sources.map((source, index) => (
+      {rows.map((source, index) => (
         <button key={`${source.url}-${source.title}-${index}`} type="button" onClick={() => open({ type: source.type, citation: source.title, opp, record: source })} className="flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-slate-50">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-[10px] font-bold uppercase text-muted-foreground">{source.type?.slice(0, 2) || "S"}</span>
           <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{source.title}</span><span className="block truncate text-[11px] text-muted-foreground">{source.source}{source.page ? ` · slide ${source.page}` : ""}</span></span>

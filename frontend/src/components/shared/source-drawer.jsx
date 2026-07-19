@@ -137,10 +137,11 @@ function NewsCard({ source }) {
 }
 
 function StructuredSource({ record }) {
+  const image = record.preview_url || record.image_url
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      {record.image_url && (
-        <img src={record.image_url} alt="" className="h-36 w-full object-cover" onError={(event) => { event.currentTarget.style.display = "none" }} />
+      {image && (
+        <img src={image} alt="" className="h-44 w-full object-contain bg-slate-50" onError={(event) => { event.currentTarget.style.display = "none" }} />
       )}
       <div className="p-4">
         <div className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">{record.source || "Source"}{record.page ? ` · slide ${record.page}` : ""}</div>
@@ -150,6 +151,16 @@ function StructuredSource({ record }) {
           <a href={record.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:underline">
             Open original source <ExternalLink className="size-3" />
           </a>
+        )}
+        {record.slides?.length > 0 && (
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {record.slides.map((slide) => (
+              <a key={slide.page} href={slide.preview_url || slide.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-md border border-slate-200 bg-slate-50 text-center text-[10px] font-medium text-slate-600 hover:border-slate-300">
+                {slide.preview_url && <img src={slide.preview_url} alt={`Slide ${slide.page}`} className="aspect-[4/3] w-full object-cover object-top" />}
+                <span className="block py-1">Slide {slide.page}</span>
+              </a>
+            ))}
+          </div>
         )}
       </div>
     </div>

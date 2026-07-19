@@ -112,6 +112,21 @@ def github_profile_signal(github_url: str | None) -> tuple[dict[str, Any], dict[
             return defaults, None
         data = response.json()
         repos = int(data.get("public_repos") or 0)
+        repo_response = requests.get(
+            f"https://api.github.com/users/{username}/repos",
+            params={"per_page": 100, "sort": "updated"},
+            timeout=8,
+            headers={"Accept": "application/vnd.github+json"},
+        )
+        repo_items = repo_response.json() if repo_response.status_code < 400 else []
+        created = [_parse_github_time(item.get("created_at")) for item in repo_items]
+        pushed = [_parse_github_time(item.get("pushed_at")) for item in repo_items]
+        created = [item for item in created if item]
+        pushed = [item for item in pushed if item]
+        now = datetime.now(timezone.utc)
+        longevity = max(((now - item).days // 30 for item in created), default=0)
+        recently_active = sum((now - item).days <= 180 for item in pushed)
+        consistency = round(recently_active / len(pushed), 2) if pushed else 0.0
         profile = source_record(
             kind="github",
             title=data.get("name") or f"GitHub: @{username}",
@@ -120,20 +135,41 @@ def github_profile_signal(github_url: str | None) -> tuple[dict[str, Any], dict[
             image_url=valid_public_url(data.get("avatar_url")),
             source="GitHub",
         )
-        return {"repos": repos, "commit_consistency_score": 0.0, "longevity_months": 0}, profile
+        return {"repos": repos, "commit_consistency_score": consistency, "longevity_months": longevity}, profile
     except (requests.RequestException, ValueError, TypeError):
         return defaults, None
 
 
-def search_press(company_name: str, max_results: int = 5) -> list[dict[str, Any]]:
+def search_press(company_name: str, website: str | None = None, max_results: int = 5) -> list[dict[str, Any]]:
+    """Return only company-specific coverage, never generic startup-news roundups."""
+    company = company_name.strip().casefold()
+    domain = (urlparse(valid_public_url(website) or "").hostname or "").casefold()
     try:
-        results = TavilySearchClient().search(f'"{company_name}" startup news funding launch', max_results=max_results)
+        query = f'"{company_name}" (health OR product OR launch OR app OR funding)'
+        if domain:
+            query = f'{query} OR site:{domain}'
+        results = TavilySearchClient().search(query, max_results=max_results * 2)
     except ExternalServiceError:
         return []
-    return [
-        source_record(kind="news", title=item.title, url=item.url, excerpt=item.content, source=urlparse(item.url).hostname)
-        for item in results
-    ]
+    filtered = []
+    for item in results:
+        haystack = f"{item.title} {item.content} {item.url}".casefold()
+        result_domain = (urlparse(item.url).hostname or "").casefold()
+        if company not in haystack and (not domain or not result_domain.endswith(domain)):
+            continue
+        filtered.append(source_record(kind="news", title=item.title, url=item.url, excerpt=item.content, source=result_domain))
+        if len(filtered) >= max_results:
+            break
+    return filtered
+
+
+def _parse_github_time(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
 
 def _meta_value(html: str, name: str) -> str | None:

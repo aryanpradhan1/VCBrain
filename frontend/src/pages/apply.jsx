@@ -15,6 +15,13 @@ const progressCopy = {
   failed: "We couldn’t complete processing. You can correct the document and resubmit.",
 }
 
+const processingStages = [
+  ["reading_deck", "Reading your deck"],
+  ["extracting_claims", "Extracting claims"],
+  ["checking_sources", "Checking supplied links"],
+  ["scoring", "Scoring and diligence"],
+]
+
 function OptionalLink({ name, label, placeholder }) {
   return (
     <label className="block">
@@ -53,6 +60,8 @@ export default function Apply() {
     const dropped = event.dataTransfer.files?.[0]
     if (dropped) setFile(dropped)
   }
+
+  const activeStage = Math.max(0, processingStages.findIndex(([key]) => key === submission?.stage))
 
   const submit = async (event) => {
     event.preventDefault()
@@ -128,7 +137,8 @@ export default function Apply() {
                 {submission.status === "ready" ? <Check className="size-6" strokeWidth={3} /> : submission.status === "failed" ? <X className="size-6" strokeWidth={3} /> : <LoaderCircle className="size-5 animate-spin" />}
               </span>
               <h2 className="mt-5 text-2xl font-semibold tracking-tight">{submission.status === "ready" ? "Your score is ready." : submission.status === "failed" ? "We need another file." : "Your application is in motion."}</h2>
-              <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{submission.error_message || progressCopy[submission.status] || progressCopy.queued}</p>
+              <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{submission.error_message || (submission.status === "processing" ? processingStages[activeStage]?.[1] : progressCopy[submission.status]) || progressCopy.queued}</p>
+              {submission.status === "processing" && <ol className="mt-6 w-full max-w-xs space-y-2 text-left">{processingStages.map(([key, label], index) => <li key={key} className={cn("flex items-center gap-2 text-xs", index < activeStage ? "text-emerald-700" : index === activeStage ? "font-semibold text-foreground" : "text-muted-foreground")}><span className={cn("flex size-4 items-center justify-center rounded-full border text-[9px]", index < activeStage ? "border-emerald-500 bg-emerald-500 text-white" : index === activeStage ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white")}>{index < activeStage ? "✓" : index + 1}</span>{label}</li>)}</ol>}
               {submission.status === "ready" && <Link to={`/founder/${submission.founder_id}`} className="mt-7"><Button className="rounded-lg px-5"><ShieldCheck className="size-4" /> View your Founder Score</Button></Link>}
               {submission.status === "failed" && <Button variant="outline" onClick={() => setSubmission(null)} className="mt-7 rounded-lg">Return to application</Button>}
               {!["ready", "failed"].includes(submission.status) && <p className="mt-7 text-[11px] text-muted-foreground">This page updates automatically. Deep diligence can take a few minutes.</p>}
