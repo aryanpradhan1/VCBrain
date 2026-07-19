@@ -8,6 +8,7 @@ import FounderResults from "@/pages/founder-results"
 import Interview from "@/pages/interview"
 import Memo from "@/pages/memo"
 import NetworkIntelligence from "@/pages/network"
+import SwipeReview from "@/pages/swipe-review"
 import Thesis from "@/pages/thesis"
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/opportunities/:id" element={<Memo />} />
           <Route path="/network" element={<NetworkIntelligence />} />
+          <Route path="/swipe" element={<SwipeReview />} />
           <Route path="/thesis" element={<Thesis />} />
         </Route>
 

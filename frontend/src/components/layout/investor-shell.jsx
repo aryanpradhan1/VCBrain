@@ -3,6 +3,7 @@ import { motion } from "motion/react"
 import {
   Crosshair,
   FilePlus2,
+  Flame,
   Gauge,
   Inbox,
   Network,
@@ -19,6 +20,10 @@ const investorNav = [
   { to: "/?channel=outbound", label: "Sourcing radar", icon: Radar, end: false },
   { to: "/network", label: "Network intelligence", icon: Network },
   { to: "/thesis", label: "Thesis Engine", icon: Crosshair },
+]
+
+const reviewNav = [
+  { to: "/swipe", label: "Swipe review", icon: Flame },
 ]
 
 const founderNav = [
@@ -90,6 +95,13 @@ export function InvestorShell() {
           ))}
         </nav>
 
+        <SectionLabel>Fast review</SectionLabel>
+        <nav className="space-y-0.5">
+          {reviewNav.map((item) => (
+            <Item key={item.label} {...item} />
+          ))}
+        </nav>
+
         <SectionLabel>Founder side · demo</SectionLabel>
         <nav className="space-y-0.5">
           {founderNav.map((item) => (
@@ -132,8 +144,11 @@ export function InvestorShell() {
           <NavLink to="/thesis" className="rounded-full px-2.5 py-1 font-medium text-muted-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-foreground">
             Thesis
           </NavLink>
-          <NavLink to="/network" className="rounded-full px-2.5 py-1 font-medium text-muted-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-foreground">
+          <NavLink to="/network" className="hidden rounded-full px-2.5 py-1 font-medium text-muted-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-foreground sm:inline-flex">
             Network
+          </NavLink>
+          <NavLink to="/swipe" aria-label="Swipe review" className="flex size-8 items-center justify-center rounded-full text-muted-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-foreground">
+            <Flame className="size-4" />
           </NavLink>
         </nav>
       </header>

@@ -4,6 +4,7 @@ import { motion } from "motion/react"
 import {
   Banknote,
   Gauge,
+  Flame,
   Inbox,
   Radar,
   Search,
@@ -216,6 +217,10 @@ export default function Dashboard() {
           />
           {query && <span className="absolute top-full left-0 mt-1 text-[10px] text-muted-foreground">Press Enter for smart query</span>}
         </div>
+        <Link to="/swipe" className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-3.5 text-xs font-semibold text-white shadow-sm transition-transform hover:-translate-y-0.5">
+          <Flame className="size-4 text-rose-300" />
+          Swipe review
+        </Link>
       </div>
 
       {stats && (
