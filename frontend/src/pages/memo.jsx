@@ -548,7 +548,7 @@ function AppendixMemo({ opp }) {
   return (
     <article className="memo-export-only">
       <section className="memo-export-cover">
-        <div className="memo-export-cover-top"><span>FounderScore · Investment brief</span><span>Confidential</span></div>
+        <div className="memo-export-cover-top"><span className="memo-export-scout-brand"><img src="/brand/scout-logo.png" alt=""/>Scout · Investment brief</span><span>Confidential</span></div>
         <div className="memo-export-cover-company">
           {logo ? <img src={logo} alt="" /> : <span className="memo-export-logo-fallback">{opp.company_name?.[0] || "F"}</span>}
           <div><div className="memo-export-kicker">{e.sector || "Sector not disclosed"} · {e.stage || "Stage not disclosed"} · {e.geography || "Geography not disclosed"}</div><h1>{opp.company_name}</h1><p>{e.one_liner || required.company_snapshot}</p></div>
@@ -606,7 +606,7 @@ function AppendixMemo({ opp }) {
 }
 
 function ExportPageHeading({ number, title, subtitle }) {
-  return <div className="memo-export-page-heading"><span>{number}</span><div><h1>{title}</h1><p>{subtitle}</p></div><strong>FounderScore</strong></div>
+  return <div className="memo-export-page-heading"><span>{number}</span><div><h1>{title}</h1><p>{subtitle}</p></div><strong className="memo-export-running-brand"><img src="/brand/scout-logo.png" alt=""/>Scout</strong></div>
 }
 
 function ExportFact({ title, value, eyebrow }) {
@@ -780,7 +780,7 @@ export default function Memo() {
     if (!printing || !opp) return undefined
 
     const originalTitle = document.title
-    document.title = `${opp.company_name} — FounderScore investment brief`
+    document.title = `${opp.company_name} — Scout investment brief`
     let cancelled = false
     const prepareAndPrint = async () => {
       await document.fonts?.ready
@@ -819,7 +819,7 @@ export default function Memo() {
       {opp && (
         <div className="memo-document grid items-start gap-5 lg:grid-cols-[300px_1fr]">
           <header className="memo-print-heading">
-            <div className="memo-print-brand">FounderScore <span>· Investment brief</span></div>
+            <div className="memo-print-brand"><img src="/brand/scout-logo.png" alt="" />Scout <span>· Investment brief</span></div>
             <div className="memo-print-company">{opp.company_name}</div>
             <div className="memo-print-meta">Prepared for Maschmeyer Group · Confidential</div>
           </header>

@@ -79,12 +79,10 @@ export function InvestorShell() {
     <div className="min-h-dvh">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[236px] flex-col border-r border-border bg-[#fbfcfd] px-3 py-4 lg:flex">
         <NavLink to="/" className="flex items-center gap-2.5 px-2.5 pb-2">
-          <span className="flex size-7 items-center justify-center rounded-md bg-slate-900 text-xs font-bold text-white">
-            F
-          </span>
+          <img src="/brand/scout-logo.png" alt="" className="size-9 object-contain" />
           <div className="leading-tight">
-            <div className="text-sm font-semibold tracking-tight">FounderScore</div>
-            <div className="text-[10px] text-muted-foreground">The VC Brain</div>
+            <div className="text-sm font-semibold tracking-tight">Scout</div>
+            <div className="text-[10px] text-muted-foreground">Venture intelligence</div>
           </div>
         </NavLink>
 
@@ -133,10 +131,8 @@ export function InvestorShell() {
       </aside>
 
       <header className="sticky top-0 z-40 flex h-13 items-center gap-2.5 border-b border-border bg-background/95 px-4 backdrop-blur lg:hidden">
-        <span className="flex size-6 items-center justify-center rounded-md bg-slate-900 text-[11px] font-bold text-white">
-          F
-        </span>
-        <span className="text-sm font-semibold tracking-tight">FounderScore</span>
+        <img src="/brand/scout-logo.png" alt="" className="size-8 object-contain" />
+        <span className="text-sm font-semibold tracking-tight">Scout</span>
         <nav className="ml-auto flex items-center gap-1 text-sm">
           <NavLink to="/" end className="rounded-full px-2.5 py-1 font-medium text-muted-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-foreground">
             Pipeline

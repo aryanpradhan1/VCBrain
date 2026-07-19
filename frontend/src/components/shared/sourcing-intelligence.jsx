@@ -166,7 +166,7 @@ export function SourcingIntelligence({ opportunities = [] }) {
           <GraphNode x={LEFT.memory} y={graph.height / 2} className="w-[96px]">
             <div className="flex flex-col items-center rounded-2xl bg-slate-900 px-3 py-4 text-center text-white shadow-lg">
               <Database className="size-5 text-emerald-300" />
-              <span className="mt-1.5 text-[10px] font-semibold">FounderScore</span>
+              <span className="mt-1.5 text-[10px] font-semibold">Scout</span>
               <span className="text-[8px] text-slate-300">Memory</span>
             </div>
           </GraphNode>
