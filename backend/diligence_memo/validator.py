@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Iterable
 from urllib.parse import urlparse
 
@@ -37,10 +38,14 @@ class ClaimValidator:
         search_client: SearchClient,
         reasoning_client: ReasoningClient | None = None,
         max_results_per_claim: int = 3,
+        max_parallel_claims: int = 3,
     ) -> None:
         self.search_client = search_client
         self.reasoning_client = reasoning_client
         self.max_results_per_claim = max_results_per_claim
+        # Keep provider pressure bounded: a large deck should finish promptly without
+        # turning into an unbounded burst of Tavily/OpenAI requests.
+        self.max_parallel_claims = max(1, min(max_parallel_claims, 5))
 
     def validate(
         self,
@@ -49,17 +54,29 @@ class ClaimValidator:
     ) -> ValidationResult:
         claims = normalize_claims(raw_claims)
         result = ValidationResult()
-        for claim in claims:
-            evidence = self._search(company_name, claim)
+        if not claims:
+            return result
+
+        # Results are consumed in original claim order, so trust rows and source order
+        # remain deterministic even though external requests are concurrent.
+        with ThreadPoolExecutor(max_workers=min(self.max_parallel_claims, len(claims))) as executor:
+            checked = list(executor.map(lambda claim: self._validate_claim(company_name, claim), claims))
+        for evidence, flagged, trust in checked:
             for url in cited_urls(evidence):
                 if url not in result.tavily_sources_checked:
                     result.tavily_sources_checked.append(url)
-            flagged, trust = self._assess(company_name, claim, evidence)
             if flagged is not None:
                 result.flagged_claims.append(flagged)
             result.claim_trust.append(trust)
         result.memory_update = bool(result.flagged_claims)
         return result
+
+    def _validate_claim(
+        self, company_name: str, claim: DeckClaim
+    ) -> tuple[list[Evidence], FlaggedClaim | None, ClaimTrust]:
+        evidence = self._search(company_name, claim)
+        flagged, trust = self._assess(company_name, claim, evidence)
+        return evidence, flagged, trust
 
     def _search(self, company_name: str, claim: DeckClaim) -> list[Evidence]:
         query = f'"{company_name}" {claim.field} {claim.value}'
