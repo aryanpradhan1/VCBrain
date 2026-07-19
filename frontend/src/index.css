@@ -233,6 +233,452 @@
     line-height: 1.48;
   }
 
+  .memo-export-cover {
+    position: relative;
+    display: flex;
+    min-height: 245mm;
+    flex-direction: column;
+    padding: 8mm;
+    color: #f8fafc;
+    background:
+      radial-gradient(circle at 86% 18%, rgb(124 58 237 / .36), transparent 32%),
+      linear-gradient(145deg, #08101f 0%, #111827 58%, #1e1b4b 100%);
+    border-radius: 5mm;
+    page-break-after: always;
+    break-inside: avoid;
+  }
+
+  .memo-export-cover-top,
+  .memo-export-cover-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #cbd5e1;
+    font-size: 7.5pt;
+    font-weight: 650;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .memo-export-cover-company {
+    display: grid;
+    grid-template-columns: 24mm 1fr;
+    align-items: center;
+    gap: 7mm;
+    margin-top: 34mm;
+  }
+
+  .memo-export-cover-company img,
+  .memo-export-logo-fallback {
+    display: flex;
+    width: 24mm;
+    height: 24mm;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgb(255 255 255 / .18);
+    border-radius: 5mm;
+    background: white;
+    object-fit: contain;
+    padding: 2mm;
+    color: #111827;
+    font-size: 24pt;
+    font-weight: 750;
+  }
+
+  .memo-export-kicker {
+    color: #a78bfa;
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .memo-export-cover-company h1 {
+    margin: 2mm 0;
+    color: white;
+    font-size: 34pt;
+    line-height: 1;
+    letter-spacing: -.045em;
+  }
+
+  .memo-export-cover-company p {
+    max-width: 135mm;
+    margin: 0;
+    color: #cbd5e1;
+    font-size: 12pt;
+    line-height: 1.45;
+  }
+
+  .memo-export-cover-decision {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3mm;
+    margin-top: 14mm;
+  }
+
+  .memo-export-cover-decision > div {
+    min-height: 24mm;
+    padding: 4mm;
+    border: 1px solid rgb(255 255 255 / .12);
+    border-radius: 3mm;
+    background: rgb(255 255 255 / .06);
+  }
+
+  .memo-export-cover-decision span,
+  .memo-export-cover-decision small {
+    display: block;
+    color: #94a3b8;
+    font-size: 7pt;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .memo-export-cover-decision strong {
+    display: block;
+    margin-top: 2mm;
+    color: white;
+    font-size: 15pt;
+    text-transform: capitalize;
+  }
+
+  .memo-export-cover-decision strong.is-approve { color: #6ee7b7; }
+  .memo-export-cover-decision strong.is-review { color: #fcd34d; }
+  .memo-export-cover-decision strong.is-decline { color: #fca5a5; }
+
+  .memo-export-cover-context {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 4mm;
+    margin-top: 10mm;
+  }
+
+  .memo-export-cover-context > div {
+    padding-top: 4mm;
+    border-top: 1px solid rgb(255 255 255 / .14);
+  }
+
+  .memo-export-cover-context strong {
+    color: #ddd6fe;
+    font-size: 8pt;
+    text-transform: uppercase;
+  }
+
+  .memo-export-cover-context p {
+    margin: 1.5mm 0 0;
+    color: #cbd5e1;
+    font-size: 9pt;
+  }
+
+  .memo-export-cover-footer {
+    margin-top: auto;
+  }
+
+  .memo-export-report-page {
+    min-height: 245mm;
+    padding-top: 2mm;
+    page-break-before: always;
+    break-inside: auto !important;
+  }
+
+  .memo-export-page-heading {
+    display: grid;
+    grid-template-columns: 12mm 1fr auto;
+    align-items: start;
+    gap: 4mm;
+    margin-bottom: 7mm;
+    padding-bottom: 4mm;
+    border-bottom: 1px solid #cbd5e1;
+  }
+
+  .memo-export-page-heading > span {
+    display: flex;
+    width: 10mm;
+    height: 10mm;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3mm;
+    color: white;
+    background: #4f46e5;
+    font-size: 9pt;
+    font-weight: 750;
+  }
+
+  .memo-export-page-heading h1 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 20pt;
+    letter-spacing: -.035em;
+  }
+
+  .memo-export-page-heading p {
+    margin: .5mm 0 0;
+    color: #64748b;
+    font-size: 8pt;
+  }
+
+  .memo-export-page-heading > strong {
+    color: #64748b;
+    font-size: 7pt;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .memo-export-snapshot-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3mm;
+    margin-bottom: 4mm;
+  }
+
+  .memo-export-snapshot-grid > div {
+    min-height: 34mm;
+    padding: 4mm;
+    border: 1px solid #e2e8f0;
+    border-radius: 3mm;
+    background: #f8fafc;
+  }
+
+  .memo-export-snapshot-grid span {
+    color: #64748b;
+    font-size: 7pt;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .memo-export-snapshot-grid p {
+    margin: 2mm 0 0;
+    color: #1e293b;
+    font-size: 8.5pt;
+  }
+
+  .memo-export-callout {
+    display: grid;
+    grid-template-columns: 30mm 1fr;
+    gap: 4mm;
+    margin-bottom: 4mm;
+    padding: 3.5mm 4mm;
+    border-radius: 3mm;
+    color: #312e81;
+    background: #eef2ff;
+  }
+
+  .memo-export-callout span {
+    font-size: 8pt;
+    font-weight: 750;
+    text-transform: uppercase;
+  }
+
+  .memo-export-callout p { margin: 0; font-size: 8pt; }
+
+  .memo-export-metrics,
+  .memo-export-open-items {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3mm;
+    margin-top: 4mm;
+  }
+
+  .memo-export-metrics > div,
+  .memo-export-open-items > div {
+    padding: 3mm;
+    border: 1px solid #e2e8f0;
+    border-radius: 2.5mm;
+  }
+
+  .memo-export-metrics strong {
+    display: block;
+    color: #0f172a;
+    font-size: 14pt;
+    text-transform: capitalize;
+  }
+
+  .memo-export-metrics span,
+  .memo-export-open-items strong {
+    color: #64748b;
+    font-size: 7pt;
+  }
+
+  .memo-export-open-items { grid-template-columns: repeat(3, 1fr); margin-bottom: 5mm; }
+  .memo-export-open-items span { display: block; margin-top: 1mm; font-size: 16pt; font-weight: 750; }
+
+  .memo-export-hypotheses {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3mm;
+    padding: 0;
+    list-style: none;
+  }
+
+  .memo-export-hypotheses li {
+    padding: 4mm;
+    border-radius: 3mm;
+    background: #f8fafc;
+    font-size: 8pt;
+  }
+
+  .memo-export-hypotheses li span {
+    display: flex;
+    width: 6mm;
+    height: 6mm;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 2mm;
+    border-radius: 50%;
+    color: white;
+    background: #4f46e5;
+    font-weight: 750;
+  }
+
+  .memo-export-swot > div.is-strengths { background: #ecfdf5; }
+  .memo-export-swot > div.is-weaknesses { background: #fef2f2; }
+  .memo-export-swot > div.is-opportunities { background: #eff6ff; }
+  .memo-export-swot > div.is-threats { background: #fffbeb; }
+
+  .memo-export-risks { padding-left: 5mm; color: #78350f; }
+  .memo-export-risks li { padding: 2mm 0; }
+
+  .memo-export-gallery-title {
+    break-before: page;
+    margin-top: 0;
+  }
+
+  .memo-export-team {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 3mm;
+    margin-bottom: 5mm;
+  }
+
+  .memo-export-founder {
+    display: grid;
+    grid-template-columns: 18mm 1fr;
+    gap: 3mm;
+    padding: 3.5mm;
+    border: 1px solid #e2e8f0;
+    border-radius: 3mm;
+  }
+
+  .memo-export-founder > img,
+  .memo-export-founder > span {
+    display: flex;
+    width: 18mm;
+    height: 18mm;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3mm;
+    color: white;
+    background: #1e293b;
+    object-fit: cover;
+    font-size: 16pt;
+    font-weight: 750;
+  }
+
+  .memo-export-founder h3 { margin: 0; font-size: 10pt; }
+  .memo-export-founder strong { color: #4f46e5; font-size: 7pt; }
+  .memo-export-founder p { margin: 1.5mm 0 0; color: #475569; font-size: 7.5pt; }
+  .memo-export-founder small { display: block; margin-top: 1.5mm; color: #64748b; font-size: 6.5pt; }
+
+  .memo-export-market {
+    display: grid;
+    grid-template-columns: 74mm 1fr;
+    align-items: center;
+    gap: 7mm;
+    margin-bottom: 5mm;
+    padding: 5mm;
+    border: 1px solid #dbeafe;
+    border-radius: 4mm;
+    background: #f8fbff;
+  }
+
+  .memo-export-market-rings > span {
+    position: relative;
+    display: flex;
+    width: 70mm;
+    height: 42mm;
+    align-items: flex-start;
+    justify-content: center;
+    border-radius: 50%;
+    color: #0c4a6e;
+    background: #dbeafe;
+    padding-top: 2mm;
+  }
+
+  .memo-export-market-rings i,
+  .memo-export-market-rings em {
+    position: absolute;
+    bottom: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    border-radius: 50% 50% 0 0;
+    font-style: normal;
+    padding-top: 2mm;
+  }
+
+  .memo-export-market-rings i { width: 46mm; height: 28mm; background: #7dd3fc; }
+  .memo-export-market-rings em { width: 24mm; height: 15mm; color: white; background: #0284c7; }
+  .memo-export-market-rings b { margin-right: 2mm; font-size: 7pt; }
+  .memo-export-market-rings strong { font-size: 8pt; }
+  .memo-export-market h2 { margin: 0; font-size: 13pt; }
+  .memo-export-market p { margin: 2mm 0 0; color: #334155; font-size: 8pt; }
+  .memo-export-market small { display: block; margin-top: 2mm; color: #64748b; font-size: 7pt; }
+
+  .memo-export-competitors { display: flex; flex-wrap: wrap; gap: 2mm; }
+  .memo-export-competitors span { padding: 1.5mm 3mm; border: 1px solid #cbd5e1; border-radius: 5mm; font-size: 7.5pt; }
+
+  .memo-export-checks,
+  .memo-export-claims {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 3mm;
+    margin-bottom: 5mm;
+  }
+
+  .memo-export-checks > div,
+  .memo-export-claims > div {
+    padding: 3.5mm;
+    border: 1px solid #e2e8f0;
+    border-radius: 3mm;
+    break-inside: avoid;
+  }
+
+  .memo-export-checks h3,
+  .memo-export-claims h3 { margin: 0; font-size: 9pt; text-transform: capitalize; }
+  .memo-export-checks h3 span { float: right; color: #4f46e5; font-size: 6.5pt; text-transform: uppercase; }
+  .memo-export-checks dl { display: grid; grid-template-columns: 22mm 1fr; margin: 2mm 0; font-size: 7pt; }
+  .memo-export-checks dt { color: #64748b; }
+  .memo-export-checks dd { margin: 0; font-weight: 650; }
+  .memo-export-checks p,
+  .memo-export-claims p { margin: 1.5mm 0 0; color: #475569; font-size: 7pt; }
+
+  .memo-export-claims > div > span { float: right; padding: .5mm 2mm; border-radius: 3mm; font-size: 6pt; font-weight: 750; text-transform: uppercase; }
+  .memo-export-claims span.is-high { color: #047857; background: #d1fae5; }
+  .memo-export-claims span.is-medium { color: #92400e; background: #fef3c7; }
+  .memo-export-claims span.is-low { color: #b91c1c; background: #fee2e2; }
+
+  .memo-export-gallery-title { margin: 3mm 0; font-size: 11pt; }
+  .memo-export-gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4mm; }
+  .memo-export-gallery figure { margin: 0; overflow: hidden; border: 1px solid #cbd5e1; border-radius: 3mm; break-inside: avoid; }
+  .memo-export-gallery img { display: block; width: 100%; height: 52mm; background: #f1f5f9; object-fit: contain; }
+  .memo-export-gallery figcaption { display: grid; grid-template-columns: 18mm 1fr; gap: 2mm; padding: 2.5mm; font-size: 6.5pt; }
+  .memo-export-gallery figcaption span { color: #64748b; }
+
+  .memo-export-appendix .memo-export-section { margin-bottom: 3mm; padding-bottom: 3mm; }
+  .memo-export-swot.compact { gap: 2mm; }
+  .memo-export-flag { color: #a16207 !important; }
+
+  .memo-export-source-index { margin: 0; padding: 0; list-style: none; }
+  .memo-export-source-index li { display: grid; grid-template-columns: 9mm 1fr; gap: 2mm; padding: 2.2mm 0; border-bottom: 1px solid #e2e8f0; break-inside: avoid; }
+  .memo-export-source-index li > span { color: #6366f1; font-family: monospace; font-size: 7pt; }
+  .memo-export-source-index strong { display: block; font-size: 7.5pt; }
+  .memo-export-source-index small { display: block; color: #64748b; font-size: 6.5pt; }
+  .memo-export-source-index em { display: block; color: #64748b; font-size: 6pt; font-style: normal; overflow-wrap: anywhere; }
+
+  .memo-export-final-note { margin-top: 6mm; padding: 4mm; border-radius: 3mm; color: #312e81; background: #eef2ff; }
+  .memo-export-final-note strong { font-size: 8pt; text-transform: uppercase; }
+  .memo-export-final-note p { margin: 1mm 0 0; font-size: 7.5pt; }
+
   .memo-export-decision {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -261,6 +707,89 @@
     padding-bottom: 4mm;
     border-bottom: 1px solid #e2e8f0;
     break-inside: avoid;
+  }
+
+  .memo-export-visuals {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5mm;
+    margin-bottom: 6mm;
+    padding: 4mm;
+    border: 1px solid #cbd5e1;
+    border-radius: 3mm;
+    break-inside: avoid;
+  }
+
+  .memo-export-visuals h2 {
+    display: flex;
+    justify-content: space-between;
+    margin: 0 0 3mm;
+    font-size: 9pt;
+  }
+
+  .memo-export-visuals h2 small,
+  .memo-export-axis small {
+    color: #64748b;
+    font-size: 7pt;
+    font-weight: 500;
+  }
+
+  .memo-export-axis {
+    display: grid;
+    grid-template-columns: 26mm 1fr 18mm;
+    align-items: center;
+    gap: 2mm;
+    margin-top: 2mm;
+    font-size: 7.5pt;
+  }
+
+  .memo-export-axis > span small {
+    display: block;
+  }
+
+  .memo-export-axis i {
+    height: 2mm;
+    overflow: hidden;
+    border-radius: 2mm;
+    background: #e2e8f0;
+  }
+
+  .memo-export-axis i b {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #6366f1;
+  }
+
+  .memo-export-axis > strong {
+    text-align: right;
+    text-transform: capitalize;
+  }
+
+  .memo-export-trust-bar {
+    display: flex;
+    height: 4mm;
+    overflow: hidden;
+    border-radius: 2mm;
+    background: #e2e8f0;
+  }
+
+  .memo-export-trust-bar span:nth-child(1) { background: #10b981; }
+  .memo-export-trust-bar span:nth-child(2) { background: #f59e0b; }
+  .memo-export-trust-bar span:nth-child(3) { background: #f87171; }
+
+  .memo-export-trust-legend {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 2mm;
+    font-size: 7pt;
+    color: #64748b;
+  }
+
+  .memo-export-visuals p {
+    margin-top: 2.5mm;
+    color: #64748b;
+    font-size: 7pt;
   }
 
   .memo-export-section h2 {
@@ -307,12 +836,7 @@
     overflow-wrap: anywhere;
   }
 
-  .memo-print-heading {
-    display: block;
-    margin: 0 0 9mm;
-    padding-bottom: 4mm;
-    border-bottom: 1px solid #dbe3ee;
-  }
+  .memo-print-heading { display: none !important; }
 
   .memo-print-brand {
     color: #334155;

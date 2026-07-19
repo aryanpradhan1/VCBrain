@@ -11,6 +11,7 @@ import {
   FileText,
   Flag,
   GitBranch,
+  Gauge,
   Lightbulb,
   MapPin,
   Newspaper,
@@ -29,13 +30,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AgentPipeline } from "@/components/shared/agent-pipeline"
-import { MarketChart, ScoreFormulaBar } from "@/components/shared/charts"
+import { DecisionLandscape, EvidenceCoverageChart, MarketChart, ScoreFormulaBar } from "@/components/shared/charts"
 import { ChannelBadge, ColdStartBadge, RatingPill } from "@/components/shared/chips"
 import { DecisionBar } from "@/components/shared/decision-bar"
 import { Page, stagger } from "@/components/shared/page"
 import { ScoreRing } from "@/components/shared/score-ring"
 import { Expandable, Section } from "@/components/shared/section"
-import { scoreDot, verdictMeta } from "@/components/shared/semantics"
+import { fmtAmount, scoreDot, verdictMeta } from "@/components/shared/semantics"
 import { SignalChips } from "@/components/shared/signal-chips"
 import { CompanyMark, SourceMark } from "@/components/shared/company-mark"
 import { useSources } from "@/components/shared/source-drawer"
@@ -408,7 +409,7 @@ function TrustList({ claims, opp }) {
       <CardContent className="px-0">
         <ul>
           {(showAll ? grouped : grouped.slice(0, 4)).map((c, i) => (
-            <li key={c.claim}>
+            <li key={`${c.claim}-${i}`}>
               {i > 0 && <Separator />}
               <button
                 type="button"
@@ -526,8 +527,13 @@ function AppendixMemo({ opp }) {
   const e = opp.enrichment ?? {}
   const required = memo.required
   const optional = memo.optional_or_flagged ?? {}
+  const logoSource = (opp.sources || []).find((source) => source.type === "company_website" && (source.image_url || source.favicon_url)) || (opp.sources || []).find((source) => source.favicon_url || (source.type !== "deck" && source.image_url))
+  const logo = logoSource ? assetUrl(logoSource.image_url || logoSource.favicon_url) : null
+  const founders = e.founders || []
+  const deckEvidence = exportDeckEvidence(opp)
+  const trust = (opp.claim_trust || []).reduce((counts, claim) => ({ ...counts, [claim.confidence]: (counts[claim.confidence] || 0) + 1 }), { high: 0, medium: 0, low: 0 })
+  const sourceCount = new Set((opp.sources || []).map((source) => source.url).filter(Boolean)).size
   const sections = [
-    ["01", "Company snapshot", required.company_snapshot],
     ["04", "Team & history", optional.team_and_history || "Not disclosed"],
     ["05", "Problem & product", required.problem_and_product],
     ["06", "Technology & defensibility", "Technical architecture, proprietary components, data moat, and model choices are not disclosed in the current evidence package."],
@@ -541,14 +547,123 @@ function AppendixMemo({ opp }) {
   ]
   return (
     <article className="memo-export-only">
-      <div className="memo-export-decision"><span>Recommendation</span><strong>{verdictMeta[opp.verdict].label}</strong><span>Founder Score</span><strong>{opp.founder_score.value} ± {opp.founder_score.confidence_interval}</strong></div>
-      <section className="memo-export-section"><h2>01 · Company snapshot</h2><p>{required.company_snapshot}</p></section>
-      <section className="memo-export-section"><h2>02 · Investment hypotheses</h2><ol>{required.investment_hypotheses.map((item) => <li key={item}>{item}</li>)}</ol></section>
-      <section className="memo-export-section"><h2>03 · SWOT</h2><div className="memo-export-swot">{Object.entries(required.swot || {}).map(([key, values]) => <div key={key}><h3>{key}</h3><ul>{(values || []).map((value) => <li key={value}>{value}</li>)}</ul></div>)}</div></section>
-      {sections.slice(1).map(([number, title, value]) => <section key={number} className="memo-export-section"><h2>{number} · {title}</h2><p>{value}</p></section>)}
-      <section className="memo-export-section"><h2>Evidence index</h2><ol>{(opp.sources || []).slice(0, 20).map((source, index) => <li key={`${source.url}-${index}`}><strong>[{index + 1}] {source.title}</strong><span>{source.url}</span></li>)}</ol></section>
+      <section className="memo-export-cover">
+        <div className="memo-export-cover-top"><span>FounderScore · Investment brief</span><span>Confidential</span></div>
+        <div className="memo-export-cover-company">
+          {logo ? <img src={logo} alt="" /> : <span className="memo-export-logo-fallback">{opp.company_name?.[0] || "F"}</span>}
+          <div><div className="memo-export-kicker">{e.sector || "Sector not disclosed"} · {e.stage || "Stage not disclosed"} · {e.geography || "Geography not disclosed"}</div><h1>{opp.company_name}</h1><p>{e.one_liner || required.company_snapshot}</p></div>
+        </div>
+        <div className="memo-export-cover-decision"><div><span>Recommendation</span><strong className={`is-${opp.verdict}`}>{verdictMeta[opp.verdict].label}</strong></div><div><span>Founder Score</span><strong>{opp.founder_score.value}<small> ± {opp.founder_score.confidence_interval}</small></strong></div><div><span>Proposed check</span><strong>{opp.amount_recommended > 0 ? fmtAmount(opp.amount_recommended) : "No check"}</strong></div><div><span>Thesis</span><strong>{opp.thesis?.thesis_match ? "Match" : "Miss"}</strong></div></div>
+        <div className="memo-export-cover-context"><div><strong>Decision context</strong><p>{required.company_snapshot}</p></div><div><strong>Evidence retained</strong><p>{opp.claim_trust?.length || 0} claims · {sourceCount} unique links · {deckEvidence.length} visual slides selected</p></div></div>
+        <div className="memo-export-cover-footer"><span>Prepared for Maschmeyer Group</span><span>{new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}</span></div>
+      </section>
+
+      <section className="memo-export-report-page">
+        <ExportPageHeading number="01" title="Executive decision summary" subtitle="The shortest path to the investment decision" />
+        <div className="memo-export-snapshot-grid"><ExportFact title="Problem" value={e.problem || "Not disclosed"}/><ExportFact title="Solution" value={e.solution || "Not disclosed"}/><ExportFact title="Product-market fit" value={e.pmf?.note || required.traction_kpis} eyebrow={e.pmf?.signal}/></div>
+        <div className="memo-export-callout"><span>{opp.thesis?.thesis_match ? "Thesis match" : "Thesis miss"}</span><p>{opp.thesis?.rationale || "Thesis rationale unavailable."}</p></div>
+        <AppendixVisualSummary opp={opp} />
+        <div className="memo-export-metrics"><ExportMetric label="High-trust claims" value={`${trust.high}/${opp.claim_trust?.length || 0}`}/><ExportMetric label="Public sources" value={sourceCount}/><ExportMetric label="Founder trend" value={opp.founder_score.trend}/><ExportMetric label="Portfolio" value={opp.portfolio_check?.overlap ? "Overlap" : "Clear"}/></div>
+      </section>
+
+      <section className="memo-export-report-page">
+        <ExportPageHeading number="02" title="Investment case" subtitle="Why invest, what could work, and what must be true" />
+        <section className="memo-export-section"><h2>Investment hypotheses</h2><ol className="memo-export-hypotheses">{required.investment_hypotheses.map((item, index) => <li key={item}><span>{index + 1}</span>{item}</li>)}</ol></section>
+        <section className="memo-export-section"><h2>SWOT · evidence-backed summary</h2><div className="memo-export-swot">{Object.entries(required.swot || {}).map(([key, values]) => <div key={key} className={`is-${key}`}><h3>{key}</h3><ul>{(values || []).map((value) => <li key={value}>{value}</li>)}</ul></div>)}</div></section>
+        <section className="memo-export-section"><h2>Adversarial view · strongest case against</h2><ul className="memo-export-risks">{exportDecisionRisks(opp.adversarial_view?.challenges).map((challenge) => <li key={challenge}>{challenge}</li>)}</ul></section>
+      </section>
+
+      <section className="memo-export-report-page">
+        <ExportPageHeading number="03" title="Team and market" subtitle="Who is building, market scope, and competitive context" />
+        <div className="memo-export-team">{founders.length ? founders.map((founder) => <div key={founder.name} className="memo-export-founder">{founder.avatar ? <img src={assetUrl(founder.avatar)} alt=""/> : <span>{founder.name?.[0] || "F"}</span>}<div><h3>{founder.name}</h3><strong>{founder.role}</strong><p>{founder.background || founder.ai_read || "Background not independently established."}</p>{founder.affiliations?.length > 0 && <small>{founder.affiliations.join(" · ")}</small>}</div></div>) : <p className="memo-export-flag">Team details not disclosed.</p>}</div>
+        <ExportMarket market={e.market} method={e.market_method}/>
+        <section className="memo-export-section"><h2>Competition</h2>{e.competitors?.length ? <div className="memo-export-competitors">{e.competitors.map((competitor) => <span key={competitor}>{competitor}</span>)}</div> : <p className="memo-export-flag">Named competitor set not disclosed.</p>}</section>
+      </section>
+
+      <section className="memo-export-report-page">
+        <ExportPageHeading number="04" title="Evidence and diligence" subtitle="Claims, independent checks, and exact deck evidence" />
+        {e.calculation_checks?.length > 0 && <div className="memo-export-checks">{e.calculation_checks.map((check) => <div key={`${check.title}-${check.source_slide}`}><h3>{check.title}<span>{check.status}</span></h3><dl><dt>Deck</dt><dd>{check.reported}</dd><dt>Recomputed</dt><dd>{check.recomputed}</dd></dl><p>{check.note}</p></div>)}</div>}
+        <div className="memo-export-claims">{(opp.claim_trust || []).slice(0, 8).map((claim, index) => <div key={`${claim.claim}-${index}`}><span className={`is-${claim.confidence}`}>{claim.confidence}</span><h3>{claim.claim.replaceAll("_", " ")}</h3><p>{exportEvidencePreview(claim.evidence)}</p></div>)}</div>
+        {deckEvidence.length > 0 && <><h2 className="memo-export-gallery-title">Cited deck evidence</h2><div className="memo-export-gallery">{deckEvidence.map((source) => <figure key={`${source.page}-${source.preview_url}`}><img src={assetUrl(source.preview_url || source.image_url)} alt={`Deck slide ${source.page}`}/><figcaption><strong>Slide {source.page}</strong><span>{shortExportText(source.excerpt, 120)}</span></figcaption></figure>)}</div></>}
+      </section>
+
+      <section className="memo-export-report-page memo-export-appendix">
+        <ExportPageHeading number="05" title="Appendix 1 investment memo" subtitle="Complete challenge-checklist order; gaps explicitly flagged" />
+        <section className="memo-export-section"><h2>01 · Company snapshot</h2><p>{required.company_snapshot}</p></section>
+        <section className="memo-export-section"><h2>02 · Investment hypotheses</h2><ol>{required.investment_hypotheses.map((item) => <li key={item}>{item}</li>)}</ol></section>
+        <section className="memo-export-section"><h2>03 · SWOT</h2><div className="memo-export-swot compact">{Object.entries(required.swot || {}).map(([key, values]) => <div key={key}><h3>{key}</h3><ul>{(values || []).map((value) => <li key={value}>{value}</li>)}</ul></div>)}</div></section>
+        {sections.map(([number, title, value]) => <section key={number} className="memo-export-section"><h2>{number} · {title}</h2><p className={/not disclosed|not assessed|unavailable/i.test(value) ? "memo-export-flag" : ""}>{value}</p></section>)}
+      </section>
+
+      <section className="memo-export-report-page">
+        <ExportPageHeading number="06" title="Source index and open diligence" subtitle="Bounded references retained with the analysis" />
+        <div className="memo-export-open-items"><div><strong>Low-confidence claims</strong><span>{trust.low}</span></div><div><strong>Medium-confidence claims</strong><span>{trust.medium}</span></div><div><strong>Processing steps logged</strong><span>{opp.processing_trace?.length || 0}</span></div></div>
+        <ol className="memo-export-source-index">{exportSources(opp.sources).map((source, index) => <li key={`${source.url}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{source.title}</strong><small>{source.source || source.type}{source.page ? ` · slide ${source.page}` : ""}</small><em>{source.url}</em></div></li>)}</ol>
+        <div className="memo-export-final-note"><strong>Investment discipline</strong><p>This brief distinguishes founder-provided claims, externally corroborated evidence, and unavailable information. A recommendation is not a substitute for legal, financial, technical, or reference diligence.</p></div>
+      </section>
     </article>
   )
+}
+
+function ExportPageHeading({ number, title, subtitle }) {
+  return <div className="memo-export-page-heading"><span>{number}</span><div><h1>{title}</h1><p>{subtitle}</p></div><strong>FounderScore</strong></div>
+}
+
+function ExportFact({ title, value, eyebrow }) {
+  return <div><span>{title}{eyebrow ? ` · ${eyebrow}` : ""}</span><p>{value}</p></div>
+}
+
+function ExportMetric({ label, value }) {
+  return <div><strong>{value}</strong><span>{label}</span></div>
+}
+
+function ExportMarket({ market, method }) {
+  if (![market?.tam, market?.sam, market?.som].every((value) => Number.isFinite(value) && value > 0)) return <section className="memo-export-section"><h2>Market sizing</h2><p className="memo-export-flag">{market?.basis || "TAM / SAM / SOM not fully disclosed."}</p></section>
+  const display = (key) => market.display?.[key] || `${market.unit?.startsWith("$") === false ? "" : "$"}${market[key]}${market.unit || "B"}`
+  return <section className="memo-export-market"><div className="memo-export-market-rings"><span><b>TAM</b><strong>{display("tam")}</strong><i><b>SAM</b><strong>{display("sam")}</strong><em><b>SOM</b><strong>{display("som")}</strong></em></i></span></div><div><h2>Market sizing</h2><p>{market.basis}</p>{method && <small>{method}</small>}</div></section>
+}
+
+function exportDeckEvidence(opp) {
+  const citedPages = new Set([...(opp.founder_axis?.citations || []), ...(opp.market_axis?.citations || []), ...(opp.idea_vs_market_axis?.citations || [])].map((citation) => citation.match(/(?:deck[ _-]?slide|slide)[_\s-]*(\d+)/i)?.[1]).filter(Boolean))
+  const deck = (opp.sources || []).filter((source) => source.type === "deck" && (source.preview_url || source.image_url))
+  return [...deck.filter((source) => citedPages.has(String(source.page))), ...deck.filter((source) => !citedPages.has(String(source.page)))].slice(0, 6)
+}
+
+function exportSources(sources = []) {
+  const nonDeck = sources.filter((source, index) => source.type !== "deck" && sources.findIndex((candidate) => candidate.url === source.url) === index)
+  const deck = sources.filter((source) => source.type === "deck")
+  return [...nonDeck.slice(0, 20), ...(deck.length ? [{ ...deck[0], title: `Pitch deck · ${deck.length} slides`, source: "Founder-uploaded document" }] : [])]
+}
+
+function shortExportText(value, length = 160) {
+  const text = String(value || "").replace(/\s+/g, " ").trim()
+  return text.length > length ? `${text.slice(0, length).trim()}…` : text
+}
+
+function exportEvidencePreview(evidence) {
+  return shortExportText(String(evidence || "").replace(/\s*Sources?:\s*https?:\/\/\S+(?:\s*[;,|]\s*https?:\/\/\S+)*/gi, "").replace(/https?:\/\/\S+/g, ""), 260)
+}
+
+function exportDecisionRisks(challenges = []) {
+  const seen = new Set()
+  return challenges.reduce((risks, challenge) => {
+    const category = String(challenge).match(/^The\s+([a-z_ ]+?)\s+claim\s+may/i)?.[1]?.trim() || String(challenge).split(":", 1)[0]
+    if (seen.has(category) || risks.length >= 3) return risks
+    seen.add(category)
+    risks.push(shortExportText(challenge, 300))
+    return risks
+  }, [])
+}
+
+function AppendixVisualSummary({ opp }) {
+  const trust = (opp.claim_trust || []).reduce((counts, claim) => ({ ...counts, [claim.confidence]: (counts[claim.confidence] || 0) + 1 }), { high: 0, medium: 0, low: 0 })
+  const total = Math.max(opp.claim_trust?.length || 0, 1)
+  const axes = [
+    ["Founder", `${opp.founder_axis.score} / 100`, opp.founder_axis.score, opp.founder_axis.trend],
+    ["Market", opp.market_axis.rating, ({ bear: 14, neutral: 50, bullish: 86 }[opp.market_axis.rating] ?? 50), opp.market_axis.trend],
+    ["Idea vs Market", opp.idea_vs_market_axis.rating, ({ bear: 14, neutral: 50, bullish: 86 }[opp.idea_vs_market_axis.rating] ?? 50), opp.idea_vs_market_axis.trend],
+  ]
+  return <section className="memo-export-visuals"><div><h2>Decision landscape <small>never averaged</small></h2>{axes.map(([label, display, percent, trend]) => <div key={label} className="memo-export-axis"><span>{label}<small>{trend}</small></span><i><b style={{ width: `${percent}%` }}/></i><strong>{display}</strong></div>)}</div><div><h2>Per-claim trust <small>{opp.claim_trust?.length || 0} checked</small></h2><div className="memo-export-trust-bar"><span style={{ width: `${(trust.high / total) * 100}%` }}/><span style={{ width: `${(trust.medium / total) * 100}%` }}/><span style={{ width: `${(trust.low / total) * 100}%` }}/></div><div className="memo-export-trust-legend"><span>High <strong>{trust.high}</strong></span><span>Medium <strong>{trust.medium}</strong></span><span>Low <strong>{trust.low}</strong></span></div><p>{new Set((opp.sources || []).map((source) => source.url).filter(Boolean)).size} unique evidence links retained.</p></div></section>
 }
 
 function AdversarialPanel({ challenges }) {
@@ -666,13 +781,19 @@ export default function Memo() {
 
     const originalTitle = document.title
     document.title = `${opp.company_name} — FounderScore investment brief`
-    const openPrintDialog = () => {
+    let cancelled = false
+    const prepareAndPrint = async () => {
+      await document.fonts?.ready
+      const images = [...document.querySelectorAll(".memo-export-only img")]
+      await Promise.all(images.map((image) => image.complete ? Promise.resolve() : new Promise((resolve) => { image.addEventListener("load", resolve, { once: true }); image.addEventListener("error", resolve, { once: true }) })))
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      if (cancelled) return
       window.print()
       document.title = originalTitle
       setPrinting(false)
     }
-    const frame = requestAnimationFrame(() => requestAnimationFrame(openPrintDialog))
-    return () => cancelAnimationFrame(frame)
+    prepareAndPrint()
+    return () => { cancelled = true; document.title = originalTitle }
   }, [printing, opp])
 
   return (
@@ -767,6 +888,15 @@ export default function Memo() {
                 sub="Three independent axes — never averaged into one number"
                 right={<Badge variant={verdictMeta[opp.verdict].variant}>Recommendation: {verdictMeta[opp.verdict].label}</Badge>}>
                 <AxisCards opp={opp} />
+              </Section>
+            </motion.div>
+
+            <motion.div id="decision-dashboard" variants={stagger.item}>
+              <Section icon={Gauge} title="Decision dashboard" sub="Conviction and evidence coverage at a glance">
+                <div className="grid gap-3 xl:grid-cols-2">
+                  <DecisionLandscape opportunity={opp} />
+                  <EvidenceCoverageChart claims={opp.claim_trust} sources={opp.sources} />
+                </div>
               </Section>
             </motion.div>
 

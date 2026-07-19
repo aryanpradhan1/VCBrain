@@ -28,6 +28,25 @@ export async function listOpportunities(query = "") {
   return [...opportunities].sort((a, b) => b.founder_score.value - a.founder_score.value)
 }
 
+export async function listOutboundLeads() {
+  if (BASE) return real("/outbound/leads")
+  await delay(500)
+  return opportunities.filter((item) => item.sourcing_channel === "outbound").map((item, index) => ({
+    founder_id: item.founder_id,
+    company_id: item.company_id,
+    founder_score: item.founder_score,
+    cold_start_flag: item.cold_start_flag,
+    outreach_status: index === 0 ? "converted" : "delivered_no_response",
+    last_event_at: new Date(Date.now() - index * 86_400_000).toISOString(),
+  }))
+}
+
+export async function triggerOutboundScan() {
+  if (BASE) return real("/outbound/scan", { method: "POST" })
+  await delay(700)
+  return { status: "started", detail: "Demo scan started; outbound leads will refresh shortly." }
+}
+
 export async function getOpportunity(id) {
   if (BASE) return real(`/opportunities/${id}`)
   await delay(500)
