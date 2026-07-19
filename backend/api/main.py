@@ -360,6 +360,14 @@ def load_fixture_data() -> None:
         store.upsert_application(company_id=company_id, founder_id=payload["founder_id"], company_name=profile["company_name"], status="ready", profile=profile, documents=documents, sources=sources, signal=payload, analysis=analysis, trace=traces)
         _cache_application(store.get(company_id) or {})
 
+    # Fixtures give the demo a useful starting state, but real applications are
+    # the durable product data. Reload every completed record after a server
+    # restart so a processed founder never vanishes from the pipeline merely
+    # because the API process was restarted.
+    for record in store.all():
+        if record.get("status") == "ready" and record.get("signal") and record.get("analysis"):
+            _cache_application(record)
+
 
 @app.on_event("startup")
 async def startup_event() -> None:
@@ -405,7 +413,10 @@ def _assemble_opportunity(company_id: str) -> OpportunityResponse:
     enrichment = build_enrichment(profile, signal, sources, record.get("trace", []))
     enrichment["news"] = [
         {"title": source["title"], "source": source.get("source") or "Public source", "date": (source.get("retrieved_at") or "")[:10], "url": source.get("url")}
-        for source in record.get("sources", [])
+        # Use the same company-specific, de-noised source set as the ledger.
+        # Reading the raw record here previously reintroduced broad fundraising
+        # roundups that had already been filtered out above.
+        for source in sources
         if source.get("type") == "news"
     ]
     verdict = record.get("decision") or analysis["verdict"]
@@ -432,8 +443,13 @@ def _assemble_opportunity(company_id: str) -> OpportunityResponse:
 def get_opportunity(company_id: str) -> OpportunityResponse:
     if company_id not in OPPORTUNITIES_DB:
         record = store.get(company_id)
-        if record and record.get("status") != "ready":
-            raise HTTPException(status_code=409, detail="Application is still processing")
+        if record:
+            if record.get("status") != "ready":
+                raise HTTPException(status_code=409, detail="Application is still processing")
+            if record.get("signal") and record.get("analysis"):
+                _cache_application(record)
+        if company_id in OPPORTUNITIES_DB:
+            return _assemble_opportunity(company_id)
         raise HTTPException(status_code=404, detail="Opportunity not found")
     return _assemble_opportunity(company_id)
 
@@ -563,7 +579,11 @@ def record_interview_response(session_id: str, request: InterviewResponseRequest
 @app.post("/opportunities/{company_id}/decision")
 def record_decision(company_id: str, request: DecisionRequest) -> dict[str, str]:
     if company_id not in OPPORTUNITIES_DB:
-        raise HTTPException(status_code=404, detail="Opportunity not found")
+        record = store.get(company_id)
+        if record and record.get("status") == "ready" and record.get("signal") and record.get("analysis"):
+            _cache_application(record)
+        else:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
     store.set_decision(company_id, request.decision)
     OPPORTUNITIES_DB[company_id]["decision"] = request.decision
     return {"company_id": company_id, "decision": request.decision, "status": "recorded"}

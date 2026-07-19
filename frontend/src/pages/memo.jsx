@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Brain,
   ChartPie,
+  Calculator,
   CircleCheck,
   ExternalLink,
   FileText,
@@ -194,6 +195,36 @@ function Snapshot({ e }) {
   )
 }
 
+function CalculationChecks({ checks, opp }) {
+  const { open } = useSources()
+  if (!checks?.length) return null
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {checks.map((check) => {
+        const source = opp.sources?.find((item) => item.type === "deck" && String(item.page) === String(check.source_slide))
+        const matches = check.status === "consistent"
+        return (
+          <button
+            key={`${check.title}-${check.source_slide}`}
+            type="button"
+            onClick={() => open({ citation: `deck_slide_${check.source_slide}`, opp, record: source })}
+            className="rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-slate-50">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">{check.title}</span>
+              <Badge variant={matches ? "positive" : "negative"}>{matches ? "Arithmetic checks out" : "Needs reconciliation"}</Badge>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg bg-secondary/65 p-2.5"><span className="block text-[10px] font-medium text-muted-foreground uppercase">Deck says</span><span className="mt-0.5 block text-xs font-semibold">{check.reported}</span></div>
+              <div className="rounded-lg bg-sky-50/70 p-2.5"><span className="block text-[10px] font-medium text-sky-700 uppercase">Recomputed</span><span className="mt-0.5 block text-xs font-semibold text-sky-950">{check.recomputed}</span></div>
+            </div>
+            <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">{check.note}</p>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Founders ──────────────────────────────────────────────────────────────
 function SocialIcon({ href, icon: Icon, label }) {
   if (!href) return null
@@ -307,19 +338,58 @@ function ConfidenceMeter({ confidence }) {
 
 function TrustList({ claims, opp }) {
   const { open } = useSources()
+  const confidenceRank = { low: 0, medium: 1, high: 2 }
+  const grouped = Object.values(
+    (claims ?? []).reduce((groups, claim) => {
+      const key = claim.claim || "other"
+      const current = groups[key]
+      if (!current) {
+        groups[key] = { ...claim, count: 1 }
+        return groups
+      }
+      current.count += 1
+      // The investor-facing overview should lead with the weakest finding,
+      // while the complete per-claim record remains in the persisted response.
+      if ((confidenceRank[claim.confidence] ?? 1) < (confidenceRank[current.confidence] ?? 1)) {
+        groups[key] = { ...claim, count: current.count }
+      }
+      return groups
+    }, {}),
+  ).sort((a, b) => (confidenceRank[a.confidence] ?? 1) - (confidenceRank[b.confidence] ?? 1))
+
+  const evidencePreview = (evidence) => {
+    const withoutUrls = String(evidence ?? "")
+      .replace(/\s*Sources?:\s*https?:\/\/\S+(?:\s*[;,|]\s*https?:\/\/\S+)*/gi, "")
+      .replace(/https?:\/\/\S+/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+    return withoutUrls.length > 260 ? `${withoutUrls.slice(0, 257).trimEnd()}…` : withoutUrls
+  }
+
+  const sourceFor = (claim) => {
+    const text = `${claim.claim} ${claim.evidence}`
+    const slide = text.match(/(?:deck[ _-]?slide|slide)[ _-]*(\d+)/i)?.[1]
+    if (slide) return opp.sources?.find((source) => source.type === "deck" && String(source.page) === slide)
+    const url = text.match(/https?:\/\/[^\s,;)]+/i)?.[0]
+    return url ? opp.sources?.find((source) => source.url === url) : undefined
+  }
+
   return (
     <Card className="gap-0 py-0">
       <CardContent className="px-0">
         <ul>
-          {claims.map((c, i) => (
+          {grouped.map((c, i) => (
             <li key={c.claim}>
               {i > 0 && <Separator />}
               <button
                 type="button"
-                onClick={() => open({ citation: `${c.claim}: ${c.evidence}`, opp })}
+                onClick={() => open({ citation: `${c.claim}: ${c.evidence}`, opp, record: sourceFor(c) })}
                 className="flex w-full cursor-pointer items-start gap-4 px-5 py-3.5 text-left transition-colors hover:bg-secondary/40">
-                <span className="w-24 shrink-0 pt-0.5 text-sm font-medium capitalize">{c.claim.replaceAll("_", " ")}</span>
-                <p className="flex-1 text-sm leading-relaxed text-foreground/80">{c.evidence}</p>
+                <span className="w-28 shrink-0 pt-0.5 text-sm font-medium capitalize">
+                  {c.claim.replaceAll("_", " ")}
+                  {c.count > 1 && <span className="mt-1 block text-[10px] font-normal text-muted-foreground">{c.count} checks</span>}
+                </span>
+                <p className="flex-1 text-sm leading-relaxed text-foreground/80">{evidencePreview(c.evidence)}</p>
                 <ConfidenceMeter confidence={c.confidence} />
               </button>
             </li>
@@ -579,6 +649,14 @@ export default function Memo() {
                 <Snapshot e={e} />
               </Section>
             </motion.div>
+
+            {e?.calculation_checks?.length > 0 && (
+              <motion.div variants={stagger.item}>
+                <Section icon={Calculator} title="Model checks" sub="Deck arithmetic recomputed separately from external validation">
+                  <CalculationChecks checks={e.calculation_checks} opp={opp} />
+                </Section>
+              </motion.div>
+            )}
 
             {e?.agent_trace && (
               <motion.div variants={stagger.item}>

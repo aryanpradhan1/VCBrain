@@ -12,6 +12,8 @@ from typing import Any
 
 _PROJECTED = re.compile(r"\b(plan|planned|project|target|estimate|recommend|will|future|roadmap)\w*\b", re.I)
 _ACTIVE = re.compile(r"\b(live|launched|app store|won|winner|beta|pilot|revenue|paying|grant|accepted)\b", re.I)
+# The final digit avoids swallowing prose punctuation such as "$25,970,".
+_MONEY = re.compile(r"\$\s*(\d(?:[\d,]*\d)?)([KMB])?", re.I)
 
 
 def build_enrichment(
@@ -36,10 +38,11 @@ def build_enrichment(
         "sector": profile.get("sector") or "Not disclosed",
         "stage": profile.get("stage") or "Not disclosed",
         "geography": profile.get("geography") or "Not disclosed",
-        "website": profile.get("website") or _website_from_sources(sources),
+        "website": profile.get("website") or _website_from_sources(sources, company),
         "founders": team,
         "market": market,
         "pmf": {"signal": "early", "note": traction_note},
+        "calculation_checks": _quantitative_checks(traction_claims),
         "agent_trace": trace,
     }
 
@@ -161,7 +164,8 @@ def _team_history(members: list[dict[str, Any]]) -> str:
     return "; ".join(f"{member['name']} ({member['role']})" for member in members) or "Not disclosed"
 
 
-def _website_from_sources(sources: list[dict[str, Any]]) -> str | None:
+def _website_from_sources(sources: list[dict[str, Any]], company_name: str = "") -> str | None:
+    company_token = re.sub(r"[^a-z0-9]", "", company_name.casefold())
     for source in sources:
         excerpt = str(source.get("excerpt") or "")
         match = re.search(r"\b(?:website (?:is|at) |visit )((?:https?://)?(?:www\.)?[a-z0-9-]+\.[a-z]{2,}(?:/[^\s.,)]*)?)", excerpt, re.I)
@@ -169,6 +173,17 @@ def _website_from_sources(sources: list[dict[str, Any]]) -> str | None:
             continue
         url = match.group(1).rstrip(".")
         return url if url.startswith("http") else f"https://{url}"
+    # Decks often put the site in a closing slide without prose such as
+    # "website at …". Only trust an inline domain when it names the company,
+    # which avoids promoting a cited market-research publisher as the startup.
+    if company_token:
+        for source in sources:
+            excerpt = str(source.get("excerpt") or "")
+            for match in re.finditer(r"\b(?:https?://)?(?:www\.)?([a-z0-9-]+\.[a-z]{2,}(?:/[^\s.,)]*)?)", excerpt, re.I):
+                candidate = match.group(1).rstrip(".")
+                host_token = re.sub(r"[^a-z0-9]", "", candidate.split("/", 1)[0].split(".", 1)[0].casefold())
+                if company_token in host_token or host_token in company_token:
+                    return f"https://{candidate}"
     return None
 
 
@@ -193,3 +208,50 @@ def _market_from_claims(claims: list[dict[str, Any]]) -> dict[str, Any] | None:
         "unit": "$M", "display": {"tam": values["tam"][1], "sam": values["sam"][1], "som": values["som"][1]},
         "basis": f"Deck slide {values['tam'][3]}: {values['tam'][2]} Deck slide {values['sam'][3]}: {values['sam'][2]} Deck slide {values['som'][3]}: {values['som'][2]}",
     }
+
+
+def _quantitative_checks(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Recompute simple deck arithmetic without pretending it validates assumptions.
+
+    A result marked consistent only proves that the stated inputs add up. It never
+    turns founder-reported reimbursement, volume, or pricing inputs into evidence.
+    """
+    checks: list[dict[str, Any]] = []
+    for claim in claims:
+        text = str(claim.get("value") or "")
+        if not re.search(r"\b(net|saving|profit)\b", text, re.I):
+            continue
+        amounts = list(_MONEY.finditer(text))
+        if len(amounts) < 4:
+            continue
+        values = [_money_value(match) for match in amounts[:4]]
+        if any(value is None for value in values):
+            continue
+        revenue, cost_one, cost_two, reported = values
+        recomputed = revenue - cost_one - cost_two
+        status = "consistent" if abs(recomputed - reported) <= max(1, abs(reported) * 0.01) else "mismatch"
+        shown = [match.group(0).replace(" ", "") for match in amounts[:4]]
+        checks.append({
+            "title": "Reported unit economics",
+            "reported": f"Deck-reported net result: {shown[3]}",
+            "recomputed": f"{shown[0]} − {shown[1]} − {shown[2]} = {_format_money(recomputed)}",
+            "status": status,
+            "note": "Arithmetic only. Payment rates, patient volume, costs, and adoption assumptions still require independent evidence.",
+            "source_slide": claim.get("source_slide"),
+        })
+        # One clear model check is more useful in the top-level brief than a
+        # sprawling spreadsheet of every deck number.
+        break
+    return checks
+
+
+def _money_value(match: re.Match[str]) -> float | None:
+    try:
+        multiplier = {"K": 1_000, "M": 1_000_000, "B": 1_000_000_000}.get((match.group(2) or "").upper(), 1)
+        return float(match.group(1).replace(",", "")) * multiplier
+    except ValueError:
+        return None
+
+
+def _format_money(value: float) -> str:
+    return f"${value:,.0f}"
