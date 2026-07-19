@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import sys
 import time
 import uuid
@@ -58,6 +60,11 @@ for directory in (UPLOAD_ROOT, MEDIA_ROOT):
     directory.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Scout API", description="Investor-grade founder diligence", version="1.1.0")
+# ALLOWED_ORIGINS: comma-separated extra origins (e.g. the deployed Vercel URL) added on
+# top of the local-dev defaults below, so deploying doesn't require editing this file --
+# just setting one env var. allow_origin_regex additionally covers every Vercel preview
+# deployment (each PR/branch gets its own *.vercel.app subdomain).
+_extra_origins = [origin.strip() for origin in os.environ.get("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -65,7 +72,9 @@ app.add_middleware(
         "http://localhost:5174",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
+        *_extra_origins,
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
