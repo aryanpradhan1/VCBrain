@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -20,6 +21,8 @@ from backend.diligence_memo.clients import OpenAIReasoningClient, TavilySearchCl
 from backend.diligence_memo.interview import InterviewAgent, InterviewSession
 from backend.scoring import calculate_founder_score_from_axes, evaluate_thesis_fit, match_opportunity, parse_natural_language_query, score_all_axes
 from backend.signal_intake.deck_parser import assemble_signal_intake_output, extract_deck_claims
+from backend.signal_intake.outbound_scan import run_outbound_pass
+from backend.api.db import get_all_signals, list_outbound_leads as db_list_outbound_leads, save_outreach_event, save_signal
 
 from backend.api.document_intake import (
     DocumentIntakeError,
@@ -225,6 +228,20 @@ class InterviewView(BaseModel):
     completed: bool
 
 
+class OutboundLead(BaseModel):
+    founder_id: str
+    company_id: str
+    founder_score: FounderScoreResponse
+    cold_start_flag: bool
+    outreach_status: Literal["not_activated", "delivered_no_response", "declined", "converted"]
+    last_event_at: str | None = None
+
+
+class OutboundScanTrigger(BaseModel):
+    status: str
+    detail: str
+
+
 DEMO_PROFILES: dict[str, dict[str, Any]] = {
     "c001": {"founder_name": "Jordan Chen", "sector": "Developer tools", "stage": "Pre-seed", "geography": "Boston, US", "one_liner": "AI-assisted code review for production distributed systems."},
     "c002": {"founder_name": "Avery Brooks", "sector": "Climate", "stage": "Pre-seed", "geography": "Portland, US", "one_liner": "Carbon footprint tracking for small businesses."},
@@ -342,7 +359,38 @@ def _default_enrichment(profile: dict[str, Any], signal: dict[str, Any], photo_u
     return enrichment
 
 
-def _analysis_for(signal: dict[str, Any], profile: dict[str, Any], traces: list[dict[str, Any]]) -> dict[str, Any]:
+def _merged_public_signals(founder_id: str, current: dict[str, Any]) -> dict[str, Any]:
+    """Blend this founder's accumulated Memory history (outbound-discovery GitHub/HN/arXiv
+    signals recorded before they ever applied -- see /applications' ref param) into the
+    public_signals actually fed to the Multi-Axis Scorer. Without this, an outbound-to-
+    inbound conversion links identity and outreach status (already wired) but the
+    founder's prior discovery evidence stays invisible to scoring -- this is what makes
+    the convergence apply to the founder_score itself, not just bookkeeping.
+
+    Each source's signal is a full snapshot, not incremental, so the richer one (by the
+    source's own primary count) wins rather than summing -- summing could double-count
+    the same repos/launches/papers across multiple recordings of the same evidence."""
+    merged = {source: dict(payload) for source, payload in current.items()}
+    richer_by = {"github": "repos", "devpost_hn": "launches", "arxiv": "papers"}
+    for entry in get_all_signals(founder_id):
+        source = entry["source"]
+        count_field = richer_by.get(source)
+        if not count_field:
+            continue
+        payload = {k: v for k, v in entry["payload"].items() if k not in ("company_id", "cold_start_flag")}
+        if payload.get(count_field, 0) >= merged.get(source, {}).get(count_field, 0):
+            merged[source] = payload
+    return merged
+
+
+def _analysis_for(
+    signal: dict[str, Any], profile: dict[str, Any], traces: list[dict[str, Any]]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Returns (merged_signal, analysis) -- callers must store/display merged_signal, not
+    their original signal, or the frontend would render a thinner public_signals summary
+    than what the scorer actually used (exactly the failure mode the "Signal Intake owns
+    this contract payload" comment on OpportunityResponse.public_signals warns against)."""
+    signal = {**signal, "public_signals": _merged_public_signals(signal["founder_id"], signal["public_signals"])}
     started = time.monotonic()
     multi_axis = score_all_axes(signal)
     traces.append(_trace("scorer", "Multi-Axis Scorer", "ai", "Three independent axes scored from submitted deck and public signals.", started))
@@ -354,12 +402,13 @@ def _analysis_for(signal: dict[str, Any], profile: dict[str, Any], traces: list[
     traces.append(_trace("diligence", "Diligence", "ai", f"{len(diligence_memo['trust']['claim_trust'])} deck claims checked against bounded public sources.", started))
     verdict = "decline" if not thesis.thesis_match else diligence_memo["verdict"]
     traces.append({"agent": "memo", "label": "Memo Synthesizer", "kind": "ai", "summary": "Investment memo, trust assessment, and adversarial view assembled.", "ms": 1})
-    return {
+    analysis = {
         "multi_axis": multi_axis.model_dump(),
         "thesis": thesis.model_dump(),
         "diligence_memo": diligence_memo,
         "verdict": verdict,
     }
+    return signal, analysis
 
 
 def _cache_application(record: dict[str, Any]) -> None:
@@ -388,10 +437,10 @@ def load_fixture_data() -> None:
             _cache_application(existing)
             continue
         traces = [{"agent": "screen", "label": "Screen", "kind": "rule", "summary": "Fixture is complete and passed required-input validation.", "ms": 1}]
-        analysis = _analysis_for(payload, profile, traces)
+        merged_signal, analysis = _analysis_for(payload, profile, traces)
         documents = [{"kind": "deck_fixture", "title": fixture_name, "page": item.get("source_slide"), "text": item.get("value", ""), "file_url": None} for item in payload.get("deck_claims", [])]
         sources = [{"type": "deck", "title": f"Deck slide {item.get('source_slide')}", "url": f"/opportunities/{company_id}", "excerpt": item.get("value", ""), "source": "Seeded pitch-deck fixture", "page": item.get("source_slide")} for item in payload.get("deck_claims", [])]
-        store.upsert_application(company_id=company_id, founder_id=payload["founder_id"], company_name=profile["company_name"], status="ready", profile=profile, documents=documents, sources=sources, signal=payload, analysis=analysis, trace=traces)
+        store.upsert_application(company_id=company_id, founder_id=payload["founder_id"], company_name=profile["company_name"], status="ready", profile=profile, documents=documents, sources=sources, signal=merged_signal, analysis=analysis, trace=traces)
         _cache_application(store.get(company_id) or {})
 
     # Fixtures give the demo a useful starting state, but real applications are
@@ -662,6 +711,10 @@ def _process_application(company_id: str) -> None:
         claims = extract_deck_claims(document_path)
         signal_model = assemble_signal_intake_output(founder_id=record["founder_id"], company_id=company_id, deck_claims=claims, cold_start_flag=False)
         signal = signal_model.model_dump()
+        # Record the deck evidence to Memory (backend/api/db.py) -- previously this only
+        # happened for outbound-sourced signals, never for a real deck submission, so a
+        # founder's Memory record was permanently incomplete even after they applied.
+        save_signal(record["founder_id"], "deck", signal)
         traces.append({"agent": "intake", "label": "Signal Intake", "kind": "rule", "summary": f"{len(claims)} deck claims extracted; checking supplied profiles and company-specific coverage.", "ms": 1, "stage": "checking_sources"})
         store.update_processing(company_id, status="processing", signal=signal, documents=extracted, trace=traces)
         profile, people_sources = enrich_submitted_people(record["profile"])
@@ -702,7 +755,7 @@ def _process_application(company_id: str) -> None:
             signal=signal,
             trace=traces,
         )
-        analysis = _analysis_for(signal, profile, traces)
+        signal, analysis = _analysis_for(signal, profile, traces)
         store.update_processing(company_id, status="ready", signal=signal, analysis=analysis, documents=extracted, sources=sources, trace=traces)
         _cache_application(store.get(company_id) or {})
     except Exception as exc:
@@ -738,7 +791,7 @@ def _refresh_existing_analysis(company_id: str) -> None:
         sources.extend(existing_sources)
         traces.append({"agent": "scorer", "label": "Multi-Axis Scorer", "kind": "ai", "summary": "Recomputing independent axes with refreshed public signals and corrected thesis logic.", "ms": 1, "stage": "scoring"})
         store.upsert_application(company_id=company_id, founder_id=record["founder_id"], company_name=record["company_name"], status="processing", profile=profile, documents=record["documents"], sources=sources, signal=signal, trace=traces)
-        analysis = _analysis_for(signal, profile, traces)
+        signal, analysis = _analysis_for(signal, profile, traces)
         store.update_processing(company_id, status="ready", signal=signal, analysis=analysis, sources=sources, trace=traces)
         _cache_application(store.get(company_id) or {})
     except Exception as exc:
@@ -752,6 +805,39 @@ def reprocess_opportunity(company_id: str, background_tasks: BackgroundTasks) ->
         raise HTTPException(status_code=404, detail="Completed opportunity not found")
     background_tasks.add_task(_refresh_existing_analysis, company_id)
     return ApplicationSubmission(company_id=company_id, founder_id=record["founder_id"], status="queued", status_url=f"/applications/{company_id}")
+
+
+@app.post("/outbound/scan", response_model=OutboundScanTrigger, status_code=202)
+def trigger_outbound_scan(background_tasks: BackgroundTasks) -> OutboundScanTrigger:
+    """Manual trigger for the bounded outbound scan (GitHub/HN/arXiv -> Thesis filter ->
+    partial score -> Activate -> outreach). Deliberately manual, not an automatic
+    schedule -- this makes real Tavily/OpenAI calls and can send real email once
+    EMAIL_SMTP_HOST is configured, so it shouldn't fire unattended without a conscious
+    decision each time. Runs as a background task since a full pass can take minutes."""
+    background_tasks.add_task(run_outbound_pass)
+    return OutboundScanTrigger(status="started", detail="Outbound scan running in the background; check /outbound/leads shortly.")
+
+
+@app.get("/outbound/leads", response_model=list[OutboundLead])
+def list_outbound_leads() -> list[OutboundLead]:
+    """Outbound-sourced candidates with at least one outreach event, most recent first.
+    Distinct from /opportunities -- these haven't necessarily converted into a full
+    deck-backed opportunity yet (see outreach_status)."""
+    return [OutboundLead(**lead) for lead in db_list_outbound_leads()]
+
+
+@app.get("/outbound/unsubscribe/{founder_id}", response_class=HTMLResponse)
+def unsubscribe_outbound_lead(founder_id: str) -> str:
+    """Landing page for the unsubscribe link in outbound_scan.draft_activation_email.
+    Records 'declined' regardless of prior state -- an unsubscribe click is authoritative
+    and should always be honored, even if we'd otherwise have called them 'converted'."""
+    save_outreach_event(founder_id, "declined")
+    return (
+        "<html><body style='font-family: sans-serif; max-width: 480px; margin: 80px auto; text-align: center;'>"
+        "<h2>You've been unsubscribed</h2>"
+        "<p>We won't reach out to you again. Sorry for the noise.</p>"
+        "</body></html>"
+    )
 
 
 @app.post("/applications", response_model=ApplicationSubmission, status_code=202)
@@ -774,11 +860,19 @@ def submit_application(
     geography: str = Form("", max_length=120),
     team_members_json: str = Form("", max_length=12000),
     founder_photo: UploadFile | None = File(None),
+    ref: str = Form("", max_length=200),
 ) -> ApplicationSubmission:
+    """ref, when present, is an outbound candidate's founder_id (see the Apply link in
+    outbound_scan.draft_activation_email) -- reusing it instead of minting a fresh one is
+    what converges their outbound discovery history (GitHub/HN/arXiv signals, partial
+    score) with this real deck submission under one founder_id, rather than starting a
+    disconnected record. recompute_founder_score() already reads all signals for a
+    founder_id regardless of source, so this "just works" once the id is shared."""
     if not deck.filename or not allowed_filename(deck.filename):
         raise HTTPException(status_code=415, detail="Upload a PDF, PPTX, DOCX, TXT, or Markdown document.")
     company_id = f"app-{uuid.uuid4().hex[:10]}"
-    founder_id = f"founder-{uuid.uuid4().hex[:10]}"
+    converted_from_outbound = bool(ref.strip())
+    founder_id = ref.strip() if converted_from_outbound else f"founder-{uuid.uuid4().hex[:10]}"
     extension = Path(deck.filename).suffix.lower()
     stored_name = f"{company_id}{extension}"
     destination = UPLOAD_ROOT / stored_name
@@ -802,6 +896,8 @@ def submit_application(
             profile["photo_url"] = f"/media/founders/{photo_name}"
         document = {"kind": "uploaded_document", "title": deck.filename, "stored_name": stored_name, "file_url": f"/uploads/{stored_name}", "page": None, "text": ""}
         store.upsert_application(company_id=company_id, founder_id=founder_id, company_name=company_name.strip(), status="queued", profile=profile, documents=[document], sources=[], trace=[])
+        if converted_from_outbound:
+            save_outreach_event(founder_id, "converted", company_id=company_id, cold_start_flag=False)
     except DocumentIntakeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     background_tasks.add_task(_process_application, company_id)

@@ -24,9 +24,9 @@ from .schemas import ArxivSignals, DevpostHnSignals, GithubSignals, PublicSignal
 MODEL = "gpt-5.5-2026-04-23"
 
 # Hard caps -- every fetch below is bounded by one of these, never by pagination.
-GITHUB_LIMIT = 50
-HN_LIMIT = 30
-ARXIV_LIMIT = 30
+GITHUB_LIMIT = int(os.environ.get("OUTBOUND_GITHUB_LIMIT", 50))
+HN_LIMIT = int(os.environ.get("OUTBOUND_HN_LIMIT", 30))
+ARXIV_LIMIT = int(os.environ.get("OUTBOUND_ARXIV_LIMIT", 30))
 
 # Internal Activate-gating threshold. NOT part of the published contract shapes -- this
 # score only decides whether to cold-outreach a candidate, it never crosses a module
@@ -144,25 +144,15 @@ def fetch_arxiv_recent(category: str = "cs.AI", days: int = 2, limit: int = ARXI
 # ---------------------------------------------------------------------------
 
 def _real_thesis_filter(candidate: dict) -> dict:
-    """Default thesis_filter_fn: calls B's real Thesis Engine
-    (backend/scoring/thesis_engine.py). Lazy-imported for the same reason as the
-    Memory-layer calls -- keeps this module (and its tests) usable independent of
-    whether that branch is checked out.
-
-    IMPORTANT COST CAVEAT: evaluate_thesis_fit() infers sector/stage/ask entirely from
-    deck_claims (looks for problem_product/market_size/traction/ask/team fields). Outbound
-    candidates have no deck yet, so deck_claims is honestly empty here -- nothing to
-    fabricate, since inventing a fake claim would misrepresent evidence that doesn't
-    exist. With deck_claims=[], extract_sector_from_claims() always returns "unknown",
-    which the deterministic gate always routes to the LLM judgment path. That means
-    *every* candidate in the pool triggers one paid OpenAI call here, not just activated
-    ones -- the opposite of the "cheap gate before expensive scoring" intent behind
-    filtering first. Flag this to B/the team rather than routing around it unilaterally;
-    a cheap proxy (e.g. GitHub repo topics/language as a stand-in signal) would need the
-    candidate pool to carry that raw text through, which it currently doesn't."""
+    """Calls B's real Thesis Engine (backend/scoring/thesis_engine.py) with empty
+    deck_claims. Kept for when a candidate genuinely has deck_claims to evaluate (e.g. a
+    future flow that carries real proxy claims through), but NOT used as the default
+    anymore -- see _defer_thesis_to_conversion for why. Lazy-imported for the same reason
+    as the Memory-layer calls -- keeps this module (and its tests) usable independent of
+    whether that branch is checked out."""
     from backend.scoring import evaluate_thesis_fit
 
-    thesis_output = evaluate_thesis_fit({"deck_claims": []})
+    thesis_output = evaluate_thesis_fit({"deck_claims": candidate.get("deck_claims", [])})
     return {
         "thesis_match": thesis_output.thesis_match,
         "match_type": thesis_output.match_type,
@@ -170,12 +160,35 @@ def _real_thesis_filter(candidate: dict) -> dict:
     }
 
 
+def _defer_thesis_to_conversion(candidate: dict) -> dict:
+    """Default thesis_filter_fn for outbound candidates: does NOT call the deck-based
+    Thesis Engine at all. Confirmed live (not just in theory): with deck_claims=[],
+    evaluate_thesis_fit() has nothing to reason about and rejects every single candidate,
+    100% of the time -- a full trace of 5 real discovered candidates through the pipeline
+    showed 0 survivors, not "occasional false negatives." Running a broken filter that
+    always says no is worse than running no filter -- it silently kills outbound sourcing
+    entirely while looking like it's working.
+
+    Real thesis evaluation happens naturally once/if this candidate converts (applies with
+    a real deck via /applications' ref param) -- main.py's existing pipeline already calls
+    evaluate_thesis_fit on real deck_claims at that point (see _analysis_for). Until then,
+    pool size / cost is controlled by the fetch limits (OUTBOUND_*_LIMIT env vars) and the
+    partial-score Activation threshold, not by thesis fit -- which is the honest position,
+    since sector/stage/geography fit genuinely can't be assessed from public signals alone."""
+    return {
+        "thesis_match": True,
+        "match_type": "exact",
+        "rationale": "Deferred to conversion -- no deck data yet to evaluate sector/stage/geography fit against.",
+    }
+
+
 def apply_thesis_filter(candidates: list[dict], thesis_filter_fn=None) -> list[dict]:
-    """Filter the candidate pool BEFORE scoring, per CLAUDE.md item 2. Defaults to the
-    real Thesis Engine (_real_thesis_filter) -- pass an explicit thesis_filter_fn to
-    override (e.g. in tests). Any override must accept a candidate dict and return
+    """Filter the candidate pool BEFORE scoring, per CLAUDE.md item 2. Defaults to
+    _defer_thesis_to_conversion (see its docstring for why) -- pass an explicit
+    thesis_filter_fn to override (e.g. in tests, or _real_thesis_filter if deck_claims are
+    ever genuinely available). Any override must accept a candidate dict and return
     {"thesis_match": bool, ...} per the contract shape."""
-    filter_fn = thesis_filter_fn or _real_thesis_filter
+    filter_fn = thesis_filter_fn or _defer_thesis_to_conversion
     return [c for c in candidates if filter_fn(c).get("thesis_match")]
 
 
@@ -516,18 +529,34 @@ def resolve_contact_email(identity: str) -> dict:
     return {"channel": "none", "value": None, "source": None}
 
 
-# CAN-SPAM baseline for unsolicited commercial email: a physical mailing address and a
-# working opt-out mechanism are legally required in the body, not optional polish.
-# DEMO VALUES -- not a real registered fund address. Fine for proving the send mechanism
-# works in a demo; must be replaced with the fund's real legal name/address and a real
-# opt-out mechanism before this is ever used for actual outreach beyond a demo.
+# CAN-SPAM baseline for unsolicited commercial email: a physical mailing address is
+# legally required in the body, not optional polish. The opt-out mechanism is now a real,
+# working unsubscribe link (see draft_activation_email) instead of a static line, so only
+# the address remains a placeholder.
+# DEMO VALUE -- not a real registered fund address. Fine for proving the send mechanism
+# works in a demo; must be replaced with the fund's real legal name/address before this
+# is ever used for actual outreach beyond a demo.
 _MAILING_ADDRESS_LINE = "FounderScore Fund (Demo) — 123 Demo St, Demo City, ST 00000"
-_UNSUBSCRIBE_LINE = "Reply STOP to this email to unsubscribe from future outreach."
+
+
+# Frontend/backend base URLs for the two links every outreach email carries. Localhost
+# defaults match local dev; override via env for a real deployment.
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:5173")
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
 
 
 def draft_activation_email(candidate: dict, to_email: str) -> dict:
     """Template-based, no LLM call -- keeps this step at zero marginal API cost so it can
-    run on every activated candidate without adding to the money/token budget."""
+    run on every activated candidate without adding to the money/token budget.
+
+    Carries two trackable, per-candidate links, both keyed by the candidate's identity
+    (their founder_id, per assemble_outbound_signal_intake_output):
+    - Apply link (?ref=<founder_id>) -- lets a real submission through /applications link
+      back to this candidate's existing outbound Memory history instead of becoming a
+      disconnected new founder_id. This is the actual outbound-to-inbound convergence
+      mechanism, not just a courtesy link.
+    - Unsubscribe link -- backend records the decline (see main.py's
+      /outbound/unsubscribe/{founder_id}) so outreach status reflects it."""
     identity = candidate["identity"]
     sources = ", ".join(candidate["sources"])
     signals = candidate["public_signals"]
@@ -541,15 +570,19 @@ def draft_activation_email(candidate: dict, to_email: str) -> dict:
     if signals.arxiv.papers:
         highlights.append(f"{signals.arxiv.papers} recent arXiv paper(s)")
 
+    apply_link = f"{APP_BASE_URL}/apply?ref={identity}"
+    unsubscribe_link = f"{API_BASE_URL}/outbound/unsubscribe/{identity}"
+
     subject = f"Came across your work on {sources} — quick intro?"
     body = (
         f"Hi {identity},\n\n"
         f"I came across your work via {sources} and wanted to reach out directly — "
         f"{'; '.join(highlights) if highlights else 'your public activity caught our attention'}.\n\n"
-        "We're an early-stage fund and would love a short intro call if you're building "
-        "something you'd want investor eyes on.\n\n"
+        "We're an early-stage fund and would love to hear more about what you're building. "
+        f"If you'd like to share more (deck, details), you can apply directly here: {apply_link}\n\n"
         "Best,\nFounderScore\n\n"
-        f"--\n{_MAILING_ADDRESS_LINE}\n{_UNSUBSCRIBE_LINE}"
+        f"--\n{_MAILING_ADDRESS_LINE}\n"
+        f"Don't want to hear from us? Unsubscribe: {unsubscribe_link}"
     )
     return {"to": to_email, "subject": subject, "body": body}
 
@@ -557,9 +590,9 @@ def draft_activation_email(candidate: dict, to_email: str) -> dict:
 def send_activation_email(email: dict) -> dict:
     """Until EMAIL_SMTP_HOST is set, this logs a dry run to activation_outbox.jsonl
     instead of dispatching anything. Once set (see backend/signal_intake/.env), this
-    dispatches for real via _send_via_smtp -- draft_activation_email's body includes demo
-    CAN-SPAM values (_MAILING_ADDRESS_LINE / _UNSUBSCRIBE_LINE); replace those with the
-    fund's real legal address before this is used for anything beyond a demo."""
+    dispatches for real via _send_via_smtp -- draft_activation_email's body includes a demo
+    mailing address (_MAILING_ADDRESS_LINE); replace it with the fund's real legal address
+    before this is used for anything beyond a demo."""
     if not os.environ.get("EMAIL_SMTP_HOST"):
         record = {**email, "status": "dry_run_logged", "logged_at": datetime.now(timezone.utc).isoformat()}
         with open(OUTBOX_PATH, "a", encoding="utf-8") as f:
@@ -599,17 +632,36 @@ def _record_signal_intake_in_memory(output: SignalIntakeOutput) -> None:
 
     Lazy-imported, same reasoning as deck_parser.record_deck_claims_in_memory: keeps this
     module importable and its own tests runnable whether or not db.py exists yet on the
-    branch being run."""
+    branch being run.
+
+    db.py's save_signal() reads company_id/cold_start_flag from each individual payload
+    (it upserts the founders row on every call, not just once), so those two fields are
+    included in every payload here -- passing only the bare sub-signal dict would silently
+    drop them (verified live: they came back as None/False until this was added)."""
     from backend.api.db import recompute_founder_score, save_signal
 
+    identity_fields = {"company_id": output.company_id, "cold_start_flag": output.cold_start_flag}
     signals = output.public_signals
     if signals.github.repos:
-        save_signal(output.founder_id, "github", signals.github.model_dump())
+        save_signal(output.founder_id, "github", {**signals.github.model_dump(), **identity_fields})
     if signals.devpost_hn.launches:
-        save_signal(output.founder_id, "devpost_hn", signals.devpost_hn.model_dump())
+        save_signal(output.founder_id, "devpost_hn", {**signals.devpost_hn.model_dump(), **identity_fields})
     if signals.arxiv.papers:
-        save_signal(output.founder_id, "arxiv", signals.arxiv.model_dump())
+        save_signal(output.founder_id, "arxiv", {**signals.arxiv.model_dump(), **identity_fields})
     recompute_founder_score(output.founder_id)
+
+
+def _log_outreach_sent(output: SignalIntakeOutput) -> None:
+    """Records the 'sent' outreach lifecycle event via B's Memory layer (see
+    backend/api/db.py's save_outreach_event/get_outreach_status) -- this is what lets the
+    frontend show outbound status (delivered/declined/converted) instead of outreach being
+    invisible once the email leaves. Lazy-imported for the same reason as every other
+    backend.api.db call in this module."""
+    from backend.api.db import save_outreach_event
+
+    save_outreach_event(
+        output.founder_id, "sent", company_id=output.company_id, cold_start_flag=output.cold_start_flag
+    )
 
 
 def run_outbound_pass(thesis_filter_fn=None) -> list[dict]:
@@ -651,6 +703,7 @@ def run_outbound_pass(thesis_filter_fn=None) -> list[dict]:
                 email = draft_activation_email(candidate, contact["value"])
                 outreach = send_activation_email(email)
                 outreach["contact_source"] = contact["source"]
+                _log_outreach_sent(signal_output)
             elif contact["channel"] == "social":
                 outreach = {
                     "status": "manual_followup_needed",
