@@ -415,6 +415,114 @@ def search_press(company_name: str, website: str | None = None, max_results: int
     return filtered
 
 
+def discover_team_member_profiles(
+    name: str, role: str, company_name: str, max_results: int = 5
+) -> dict[str, str | None]:
+    """Auto-discover LinkedIn and GitHub profiles for a team member using Tavily search.
+
+    Returns a dict with 'linkedin' and 'github' keys containing discovered URLs, or None if not found.
+    """
+    # Build search query with name, role, and company for better accuracy
+    query = f'"{name}" {role} {company_name} (LinkedIn OR GitHub)'
+
+    linkedin_url = None
+    github_url = None
+
+    try:
+        results = TavilySearchClient().search(query, max_results=max_results)
+    except ExternalServiceError:
+        return {"linkedin": None, "github": None}
+
+    # Extract LinkedIn and GitHub URLs from results
+    for item in results:
+        # Check URL and content for LinkedIn profile
+        if not linkedin_url:
+            linkedin_match = re.search(
+                r'https?://(?:www\.)?linkedin\.com/in/([a-zA-Z0-9\-]+)',
+                f"{item.url} {item.content}"
+            )
+            if linkedin_match:
+                linkedin_url = f"https://linkedin.com/in/{linkedin_match.group(1)}"
+
+        # Check URL and content for GitHub profile
+        if not github_url:
+            github_match = re.search(
+                r'https?://(?:www\.)?github\.com/([a-zA-Z0-9\-]+)(?:/|$)',
+                f"{item.url} {item.content}"
+            )
+            if github_match:
+                # Avoid matching organization or repo pages, only user profiles
+                username = github_match.group(1)
+                if username not in {'features', 'pricing', 'enterprise', 'blog', 'about'}:
+                    github_url = f"https://github.com/{username}"
+
+        # Stop searching if we found both
+        if linkedin_url and github_url:
+            break
+
+    return {"linkedin": linkedin_url, "github": github_url}
+
+
+def enrich_team_members_from_deck(
+    team_claims: list[dict[str, Any]], company_name: str
+) -> list[dict[str, Any]]:
+    """Extract team members from deck claims and auto-discover their LinkedIn/GitHub profiles.
+
+    Parses team text in formats like:
+    - "Name (Role)"
+    - "Name as Role"
+
+    Returns list of team member dicts with name, role, linkedin, and github.
+    """
+    if not team_claims:
+        return []
+
+    # Handle both dict and object formats
+    first_claim = team_claims[0]
+    if isinstance(first_claim, dict):
+        team_text = first_claim.get("value", "")
+    else:
+        # Pydantic BaseModel or dataclass
+        team_text = getattr(first_claim, "value", "")
+    team_members = []
+
+    # Parse "Name (Role)" format
+    for name, role in re.findall(r"([^,:]+?)\s*\(([^)]+)\)", team_text):
+        name = re.sub(r"^Team:\s*", "", name).strip()
+        role = role.strip()
+        if name and role:
+            profiles = discover_team_member_profiles(name, role, company_name)
+            team_members.append({
+                "name": name,
+                "role": role,
+                "linkedin": profiles["linkedin"],
+                "github": profiles["github"],
+                "x": None
+            })
+
+    # Parse "Name as Role" format (handles CEO, CTO, advisor, etc.)
+    for name, role in re.findall(
+        r"((?:Dr\.\s+)?[A-Z][a-z]+(?:\s+[A-Z](?:\.\s+)?[A-Z]?[a-z]*)*)\s+as\s+([A-Z]{2,}|[a-z]+|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
+        team_text
+    ):
+        name = name.strip()
+        role = role.strip()
+        # Check if already added (avoid duplicates from both formats)
+        if any(re.sub(r"[^a-z0-9]", "", m["name"].casefold()) == re.sub(r"[^a-z0-9]", "", name.casefold()) for m in team_members):
+            continue
+        if name and role:
+            profiles = discover_team_member_profiles(name, role, company_name)
+            team_members.append({
+                "name": name,
+                "role": role,
+                "linkedin": profiles["linkedin"],
+                "github": profiles["github"],
+                "x": None
+            })
+
+    return team_members
+
+
 def _parse_github_time(value: Any) -> datetime | None:
     if not isinstance(value, str):
         return None

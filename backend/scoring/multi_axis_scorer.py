@@ -99,7 +99,9 @@ Research Output:
 
     cold_start_note = ""
     if cold_start:
-        cold_start_note = "\n⚠️ COLD START FOUNDER — Limited public track record. Score conservatively and widen confidence interval."
+        cold_start_note = "\n⚠️ COLD START FOUNDER — Limited public track record. Weight deck evidence more heavily."
+    else:
+        cold_start_note = "\n✅ WARM START — Founder has some existing context or prior relationship."
 
     # Construct the prompt
     prompt = f"""You are evaluating the FOUNDER AXIS for a venture capital investment decision.
@@ -116,6 +118,14 @@ AVAILABLE EVIDENCE:
 
 Deck Claims (Team/Background):
 {team_context if team_context else "- No team background claims in deck"}
+
+SCORING GUIDELINES:
+
+- If deck claims show a coherent team with relevant roles (CEO, CTO, etc.), credit that even without extensive public signals
+- A founder who submits a complete deck with team info should start at baseline 50-60, not 20-30
+- Public signals (GitHub, launches, papers) add points above baseline
+- Absence of public signals should NOT be heavily penalized if deck evidence is solid
+- Only score below 40 if there are actual red flags (no team, incoherent background, mismatched experience)
 
 SCORING CRITERIA:
 
@@ -134,13 +144,18 @@ What NOT to score here:
 - Product-market fit → that's the Idea-vs-Market axis
 - Resilience/coachability → comes from Interview Agent later
 
-INSTRUCTIONS:
+SCORING CALIBRATION — Be fair and realistic:
+
+IMPORTANT: Most legitimate founders applying with a deck and team should score 50-75.
+Only score below 40 for clear red flags (no team info, incoherent deck, mismatched background).
 
 1. Score: 0-100 integer
-   - 80-100: Exceptional track record, strong technical depth, proven execution
-   - 60-79: Solid background, demonstrated ability, some gaps
-   - 40-59: Limited track record, early-stage capability
-   - 0-39: Very thin evidence, red flags, or mismatched background
+   - 85-100: Exceptional track record, strong technical depth, proven multi-year execution (ex-FAANG senior, prior successful exits, extensive open source contributions)
+   - 70-84: Strong background with clear execution evidence (solid tech company experience, consistent GitHub activity, launched products)
+   - 55-69: Promising founder with some demonstrated ability (relevant industry experience, some public signals, coherent team composition)
+   - 40-54: Early-stage founder with limited but relevant background (recent grad from strong program, some technical signals, first-time founder)
+   - 20-39: Weak evidence or concerning gaps (very thin background, no clear technical depth, team composition unclear)
+   - 0-19: Red flags (no team disclosed, incoherent pitch, completely mismatched background)
 
 2. Trend: "improving" | "declining" | "stable"
    - Based on recency and trajectory of signals
