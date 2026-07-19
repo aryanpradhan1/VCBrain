@@ -62,6 +62,21 @@ class RealThesisFilterTests(unittest.TestCase):
         mock_evaluate.assert_called_once_with({"deck_claims": []})
 
 
+class DeferThesisToConversionTests(unittest.TestCase):
+    """_defer_thesis_to_conversion is apply_thesis_filter's actual default now --
+    _real_thesis_filter is no longer used by default because it rejects every single
+    outbound candidate (confirmed live: 5/5 real discovered candidates, 0 survivors)."""
+
+    def test_always_passes_with_no_external_calls(self):
+        result = outbound_scan._defer_thesis_to_conversion({"identity": "anyone"})
+        self.assertTrue(result["thesis_match"])
+
+    def test_is_the_actual_default_for_apply_thesis_filter(self):
+        candidates = [{"identity": "a"}, {"identity": "b"}]
+        filtered = outbound_scan.apply_thesis_filter(candidates)
+        self.assertEqual(filtered, candidates)
+
+
 class BuildCandidatePoolTests(unittest.TestCase):
     def test_merges_three_sources_into_one_identity(self):
         candidates = outbound_scan.build_candidate_pool(GITHUB_REPOS, HN_POSTS, ARXIV_PAPERS)
@@ -257,7 +272,7 @@ class ActivationEmailTests(unittest.TestCase):
         self.assertEqual(logged["to"], "x@example.com")
         os.remove(outbound_scan.OUTBOX_PATH)
 
-    def test_draft_includes_can_spam_fields(self):
+    def test_draft_includes_can_spam_and_tracking_links(self):
         candidate = {
             "identity": "priyar",
             "sources": ["github"],
@@ -265,7 +280,10 @@ class ActivationEmailTests(unittest.TestCase):
         }
         email = outbound_scan.draft_activation_email(candidate, "priyar@example.com")
         self.assertIn(outbound_scan._MAILING_ADDRESS_LINE, email["body"])
-        self.assertIn(outbound_scan._UNSUBSCRIBE_LINE, email["body"])
+        # Apply link carries the candidate's identity so a real submission can link back
+        # to this outbound record instead of becoming a disconnected new founder_id.
+        self.assertIn(f"{outbound_scan.APP_BASE_URL}/apply?ref=priyar", email["body"])
+        self.assertIn(f"{outbound_scan.API_BASE_URL}/outbound/unsubscribe/priyar", email["body"])
 
     def test_real_send_dispatches_once_placeholders_are_replaced(self):
         email = {
@@ -361,11 +379,6 @@ class RunOutboundPassTests(unittest.TestCase):
         "search_founder_intent",
         return_value={"signal_strength": 0.0, "evidence": None, "source_url": None},
     )
-    @patch.object(
-        outbound_scan,
-        "_real_thesis_filter",
-        return_value={"thesis_match": True, "match_type": "exact", "rationale": "test"},
-    )
     @patch.object(outbound_scan, "_record_signal_intake_in_memory")
     @patch.object(outbound_scan, "resolve_contact_email", return_value={"channel": "none", "value": None, "source": None})
     @patch.object(outbound_scan, "fetch_arxiv_recent", return_value=ARXIV_PAPERS)
@@ -389,6 +402,24 @@ class RunOutboundPassTests(unittest.TestCase):
     def test_thesis_filter_excludes_non_matches(self, *_mocks):
         results = outbound_scan.run_outbound_pass(thesis_filter_fn=lambda c: {"thesis_match": False})
         self.assertEqual(results, [])
+
+    @patch.object(outbound_scan, "should_activate", return_value=True)
+    @patch.object(outbound_scan, "search_founder_intent", return_value={"signal_strength": 0.0, "evidence": None, "source_url": None})
+    @patch.object(outbound_scan, "_record_signal_intake_in_memory")
+    @patch.object(outbound_scan, "send_activation_email", return_value={"status": "dry_run_logged"})
+    @patch.object(outbound_scan, "resolve_contact_email", return_value={"channel": "email", "value": "priyar@example.com", "source": "github_profile"})
+    @patch.object(outbound_scan, "fetch_arxiv_recent", return_value=[])
+    @patch.object(outbound_scan, "fetch_show_hn", return_value=[])
+    @patch.object(outbound_scan, "fetch_github_trending", return_value=GITHUB_REPOS)
+    def test_activated_candidate_logs_outreach_sent_event(self, *_mocks):
+        fake_db = MagicMock()
+        with patch.dict(sys.modules, {"backend.api.db": fake_db}):
+            results = outbound_scan.run_outbound_pass()
+
+        self.assertTrue(results[0]["activated"])
+        fake_db.save_outreach_event.assert_called_once_with(
+            "priyar", "sent", company_id="pending_priyar", cold_start_flag=True
+        )
 
 
 class AssembleOutboundSignalIntakeOutputTests(unittest.TestCase):
@@ -429,10 +460,26 @@ class RecordSignalIntakeInMemoryTests(unittest.TestCase):
             outbound_scan._record_signal_intake_in_memory(output)
 
         self.assertEqual(fake_db.save_signal.call_count, 2)
+        # company_id/cold_start_flag must ride along on every payload -- db.py's
+        # save_signal() upserts the founders row from each individual call's payload,
+        # not just once, so omitting them here would silently drop them (a real bug this
+        # test caught live before this assertion existed).
         fake_db.save_signal.assert_any_call(
-            "priyar", "github", {"repos": 3, "commit_consistency_score": 0.5, "longevity_months": 12}
+            "priyar",
+            "github",
+            {
+                "repos": 3,
+                "commit_consistency_score": 0.5,
+                "longevity_months": 12,
+                "company_id": "pending_priyar",
+                "cold_start_flag": True,
+            },
         )
-        fake_db.save_signal.assert_any_call("priyar", "devpost_hn", {"launches": 1, "total_upvotes": 220})
+        fake_db.save_signal.assert_any_call(
+            "priyar",
+            "devpost_hn",
+            {"launches": 1, "total_upvotes": 220, "company_id": "pending_priyar", "cold_start_flag": True},
+        )
         fake_db.recompute_founder_score.assert_called_once_with("priyar")
 
 

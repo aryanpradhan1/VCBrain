@@ -27,6 +27,33 @@ def _get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _migrate_signals_table_for_outreach(conn: sqlite3.Connection) -> None:
+    """SQLite can't ALTER a CHECK constraint in place. If an existing signals table still
+    has the pre-outreach-tracking constraint, rebuild it (rename -> recreate -> copy rows
+    -> drop) so 'outreach' becomes a valid source without losing any existing signals.
+    No-op if the table doesn't exist yet (fresh install) or is already migrated."""
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='signals'").fetchone()
+    if row is None or "'outreach'" in row[0]:
+        return
+    conn.execute("ALTER TABLE signals RENAME TO signals_pre_outreach_migration")
+    conn.execute("""
+        CREATE TABLE signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            founder_id TEXT NOT NULL,
+            source TEXT NOT NULL CHECK(source IN ('deck', 'github', 'devpost_hn', 'arxiv', 'interview', 'diligence', 'outreach')),
+            payload TEXT NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (founder_id) REFERENCES founders(founder_id)
+        )
+    """)
+    conn.execute(
+        "INSERT INTO signals (id, founder_id, source, payload, timestamp) "
+        "SELECT id, founder_id, source, payload, timestamp FROM signals_pre_outreach_migration"
+    )
+    conn.execute("DROP TABLE signals_pre_outreach_migration")
+    conn.commit()
+
+
 def init_db() -> None:
     """
     Initialize database schema.
@@ -47,12 +74,17 @@ def init_db() -> None:
         )
     """)
 
+    _migrate_signals_table_for_outreach(conn)
+
     # Signals table - append-only log (never delete/update)
+    # 'outreach' source: outbound cold-email lifecycle events (sent/declined/converted),
+    # logged the same append-only way as any other evidence -- see save_outreach_event()
+    # and get_outreach_status() below.
     conn.execute("""
         CREATE TABLE IF NOT EXISTS signals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             founder_id TEXT NOT NULL,
-            source TEXT NOT NULL CHECK(source IN ('deck', 'github', 'devpost_hn', 'arxiv', 'interview', 'diligence')),
+            source TEXT NOT NULL CHECK(source IN ('deck', 'github', 'devpost_hn', 'arxiv', 'interview', 'diligence', 'outreach')),
             payload TEXT NOT NULL,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (founder_id) REFERENCES founders(founder_id)
@@ -309,6 +341,117 @@ def get_all_signals(founder_id: str) -> List[Dict[str, Any]]:
 
     conn.close()
     return signals
+
+
+# ==================== Outbound Outreach Lifecycle ====================
+# State machine: sent -> {delivered_no_response | declined | converted}
+# Logged as append-only 'outreach' signals (never overwritten), same pattern as any
+# other evidence -- current status is derived by reading the latest outreach signal.
+
+_OUTREACH_EVENTS = ("sent", "declined", "converted")
+
+
+def save_outreach_event(
+    founder_id: str,
+    event: str,
+    *,
+    company_id: Optional[str] = None,
+    cold_start_flag: Optional[bool] = None,
+    detail: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Record an outbound-outreach lifecycle event ('sent', 'declined', or 'converted').
+
+    Thin wrapper over save_signal() with source='outreach' -- company_id/cold_start_flag
+    are threaded through the same way every other signal does (see save_signal's upsert),
+    which is what makes 'converted' work: passing the real company_id here overwrites the
+    outbound-discovery placeholder (e.g. "pending_<identity>") on the founders row.
+
+    Args:
+        founder_id: Founder this event is about.
+        event: One of 'sent', 'declined', 'converted'.
+        company_id: Pass the real company_id on a 'converted' event to replace the
+            placeholder set at discovery time.
+        cold_start_flag: Usually left None (unchanged) except on conversion, where the
+            founder now has real deck evidence and is no longer cold-start.
+        detail: Optional extra context (e.g. {"session": "...", "source_url": "..."}).
+    """
+    if event not in _OUTREACH_EVENTS:
+        raise ValueError(f"Unknown outreach event {event!r}; expected one of {_OUTREACH_EVENTS}")
+    payload: Dict[str, Any] = {"event": event, **(detail or {})}
+    if company_id is not None:
+        payload["company_id"] = company_id
+    if cold_start_flag is not None:
+        payload["cold_start_flag"] = cold_start_flag
+    save_signal(founder_id, "outreach", payload)
+
+
+def get_outreach_status(founder_id: str) -> Dict[str, Any]:
+    """
+    Current outreach status for a founder, derived from their latest 'outreach' signal.
+
+    Returns:
+        {"status": "not_activated" | "sent" | "delivered_no_response" | "declined" | "converted",
+         "last_event_at": str | None}
+
+    "sent" and "delivered_no_response" are the same underlying event ('sent') --
+    "delivered_no_response" is just the read-side label once enough time has passed
+    with no decline/conversion, since there is no separate delivery webhook here.
+    """
+    conn = _get_connection()
+    cursor = conn.execute(
+        """
+        SELECT source, payload, timestamp FROM signals
+        WHERE founder_id = ? AND source = 'outreach'
+        ORDER BY id DESC LIMIT 1
+        """,
+        (founder_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return {"status": "not_activated", "last_event_at": None}
+
+    payload = json.loads(row["payload"])
+    event = payload.get("event")
+    status = "delivered_no_response" if event == "sent" else event
+    return {"status": status, "last_event_at": row["timestamp"]}
+
+
+def list_outbound_leads() -> List[Dict[str, Any]]:
+    """
+    All founders who have at least one outreach event, with their current status.
+
+    This is the read side for a dashboard "outbound leads" view -- founders sourced via
+    outbound_scan.py that haven't necessarily converted into a full deck-backed
+    opportunity yet. Excludes anyone with no outreach history at all (e.g. outbound
+    candidates who were recorded to Memory but never crossed the Activate threshold).
+
+    Returns:
+        List of {founder_id, company_id, founder_score, cold_start_flag, outreach_status,
+        last_event_at}, most recently updated first.
+    """
+    conn = _get_connection()
+    founder_ids = [
+        row["founder_id"]
+        for row in conn.execute(
+            "SELECT DISTINCT founder_id FROM signals WHERE source = 'outreach'"
+        )
+    ]
+    conn.close()
+
+    leads = []
+    for founder_id in founder_ids:
+        try:
+            founder = get_founder(founder_id)
+        except ValueError:
+            continue
+        status = get_outreach_status(founder_id)
+        leads.append({**founder, "outreach_status": status["status"], "last_event_at": status["last_event_at"]})
+
+    leads.sort(key=lambda lead: lead["last_event_at"] or "", reverse=True)
+    return leads
 
 
 # ==================== Helper Functions for Score Calculation ====================
