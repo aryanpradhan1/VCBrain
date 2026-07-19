@@ -33,6 +33,9 @@ from backend.scoring import (
 from backend.diligence_memo import ClaimValidator, DiligenceMemoPipeline, MemoSynthesizer
 from backend.diligence_memo.clients import OpenAIReasoningClient, TavilySearchClient
 
+# Import Memory Layer (B's persistent storage)
+from backend.api.db import save_signal, get_founder, get_all_signals
+
 
 app = FastAPI(
     title="FounderScore API",
@@ -170,13 +173,14 @@ _diligence_pipeline = DiligenceMemoPipeline(
 
 
 def load_fixture_data():
-    """Load test fixtures into in-memory DB.
+    """Load test fixtures into persistent database + cache expensive computations.
 
-    Diligence/memo is computed once here, at startup, and cached -- NOT recomputed per
-    request. Every opportunity needs the same real-shape assembly whether it's shown in
-    the list or the detail view (see _assemble_opportunity below), so running the real
-    Tavily+OpenAI pipeline per HTTP request would multiply cost with every dashboard
-    refresh instead of once per opportunity per server lifetime.
+    Signal data is saved to Memory Layer (persistent SQLite).
+    Diligence/memo is computed once here, at startup, and cached in-memory -- NOT
+    recomputed per request. Every opportunity needs the same real-shape assembly whether
+    it's shown in the list or the detail view (see _assemble_opportunity below), so
+    running the real Tavily+OpenAI pipeline per HTTP request would multiply cost with
+    every dashboard refresh instead of once per opportunity per server lifetime.
     """
     fixtures = [
         "signal_intake_strong.json",
@@ -195,12 +199,33 @@ def load_fixture_data():
                 company_name = f"Company {company_id}"  # placeholder: no module in the
                 # pipeline currently captures a real company name as a structured field
 
+                # Save signal to Memory Layer (persistent)
+                # This triggers recompute_founder_score() automatically
+                print(f"  Saving signal for {founder_id} to Memory Layer...")
+                save_signal(founder_id, "deck", data)
+
+                # Also save public signals as separate entries
+                if "public_signals" in data:
+                    public_signals = data["public_signals"]
+                    if public_signals.get("github"):
+                        save_signal(founder_id, "github", public_signals["github"])
+                    if public_signals.get("devpost_hn"):
+                        save_signal(founder_id, "devpost_hn", public_signals["devpost_hn"])
+                    if public_signals.get("arxiv"):
+                        save_signal(founder_id, "arxiv", public_signals["arxiv"])
+
+                # Read back the computed Founder Score from Memory Layer
+                founder_record = get_founder(founder_id)
+                print(f"    Founder Score: {founder_record['founder_score']['value']} ± {founder_record['founder_score']['confidence_interval']}")
+
+                # Run expensive operations (score multi-axis, thesis, diligence)
                 multi_axis = score_all_axes(data)
                 thesis = evaluate_thesis_fit(data)
                 diligence_memo = _diligence_pipeline.run(
                     {"company_name": company_name, "deck_claims": data.get("deck_claims", [])}
                 )
 
+                # Cache in-memory for fast access (expensive to recompute)
                 OPPORTUNITIES_DB[company_id] = {
                     "signal_data": data,
                     "company_name": company_name,
@@ -209,15 +234,15 @@ def load_fixture_data():
                     "diligence_memo": diligence_memo,
                 }
 
-                FOUNDERS_DB[founder_id] = {
-                    "founder_score": multi_axis.founder_score,
-                }
+                # Note: FOUNDERS_DB no longer used - replaced by Memory Layer
 
         except FileNotFoundError:
             print(f"Warning: Fixture {fixture_name} not found")
             continue
         except Exception as e:
             print(f"Warning: Could not process fixture {fixture_name}: {e}")
+            import traceback
+            traceback.print_exc()
             continue
 
 
@@ -307,23 +332,28 @@ def get_founder_results(founder_id: str):
 
     Only shows Founder Score + narrative.
     Does NOT show memo, SWOT, or internal analysis.
+
+    Reads from Memory Layer (persistent database).
     """
-    if founder_id not in FOUNDERS_DB:
+    try:
+        # Read from Memory Layer (persistent SQLite)
+        founder = get_founder(founder_id)
+        founder_score = founder["founder_score"]
+    except ValueError:
         raise HTTPException(status_code=404, detail="Founder not found")
 
-    founder = FOUNDERS_DB[founder_id]
-    founder_score = founder["founder_score"]
-
     # Generate narrative based on score
-    if founder_score.value >= 70:
-        narrative = f"Strong profile with demonstrated execution ability. Your Founder Score of {founder_score.value} reflects consistent technical depth and traction signals."
-    elif founder_score.value >= 50:
-        narrative = f"Solid foundation with room to strengthen. Your Founder Score of {founder_score.value} shows promise; consider building more public evidence of execution."
+    score_value = founder_score["value"]
+
+    if score_value >= 70:
+        narrative = f"Strong profile with demonstrated execution ability. Your Founder Score of {score_value} reflects consistent technical depth and traction signals."
+    elif score_value >= 50:
+        narrative = f"Solid foundation with room to strengthen. Your Founder Score of {score_value} shows promise; consider building more public evidence of execution."
     else:
-        narrative = f"Early-stage profile. Your Founder Score of {founder_score.value} indicates limited public track record. Focus on shipping, launching, and building in public."
+        narrative = f"Early-stage profile. Your Founder Score of {score_value} indicates limited public track record. Focus on shipping, launching, and building in public."
 
     return FounderResultsResponse(
-        founder_score=FounderScoreResponse(**founder_score.dict()),
+        founder_score=FounderScoreResponse(**founder_score),
         narrative=narrative
     )
 
@@ -344,6 +374,28 @@ def record_decision(company_id: str, request: DecisionRequest):
         "decision": request.decision,
         "status": "recorded"
     }
+
+
+@app.get("/founders/{founder_id}/signals")
+def get_founder_signals(founder_id: str):
+    """
+    Get all signals for a founder (audit trail / debugging).
+
+    Returns chronological list of all evidence ever collected for this founder.
+    Useful for understanding how the score was computed.
+    """
+    try:
+        signals = get_all_signals(founder_id)
+        founder = get_founder(founder_id)
+
+        return {
+            "founder_id": founder_id,
+            "current_score": founder["founder_score"],
+            "total_signals": len(signals),
+            "signals": signals
+        }
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Founder not found")
 
 
 @app.get("/opportunities", response_model=List[OpportunityResponse])
