@@ -16,9 +16,12 @@ from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
 
 import requests
+from openai import OpenAI
 from tavily import TavilyClient
 
-from .schemas import ArxivSignals, DevpostHnSignals, GithubSignals, PublicSignals
+from .schemas import ArxivSignals, DevpostHnSignals, GithubSignals, PublicSignals, SignalIntakeOutput
+
+MODEL = "gpt-5.5-2026-04-23"
 
 # Hard caps -- every fetch below is bounded by one of these, never by pagination.
 GITHUB_LIMIT = 50
@@ -140,21 +143,63 @@ def fetch_arxiv_recent(category: str = "cs.AI", days: int = 2, limit: int = ARXI
 # Engine output" shape). This is a pass-through placeholder until that endpoint exists.
 # ---------------------------------------------------------------------------
 
+def _real_thesis_filter(candidate: dict) -> dict:
+    """Default thesis_filter_fn: calls B's real Thesis Engine
+    (backend/scoring/thesis_engine.py). Lazy-imported for the same reason as the
+    Memory-layer calls -- keeps this module (and its tests) usable independent of
+    whether that branch is checked out.
+
+    IMPORTANT COST CAVEAT: evaluate_thesis_fit() infers sector/stage/ask entirely from
+    deck_claims (looks for problem_product/market_size/traction/ask/team fields). Outbound
+    candidates have no deck yet, so deck_claims is honestly empty here -- nothing to
+    fabricate, since inventing a fake claim would misrepresent evidence that doesn't
+    exist. With deck_claims=[], extract_sector_from_claims() always returns "unknown",
+    which the deterministic gate always routes to the LLM judgment path. That means
+    *every* candidate in the pool triggers one paid OpenAI call here, not just activated
+    ones -- the opposite of the "cheap gate before expensive scoring" intent behind
+    filtering first. Flag this to B/the team rather than routing around it unilaterally;
+    a cheap proxy (e.g. GitHub repo topics/language as a stand-in signal) would need the
+    candidate pool to carry that raw text through, which it currently doesn't."""
+    from backend.scoring import evaluate_thesis_fit
+
+    thesis_output = evaluate_thesis_fit({"deck_claims": []})
+    return {
+        "thesis_match": thesis_output.thesis_match,
+        "match_type": thesis_output.match_type,
+        "rationale": thesis_output.rationale,
+    }
+
+
 def apply_thesis_filter(candidates: list[dict], thesis_filter_fn=None) -> list[dict]:
-    """Filter the candidate pool BEFORE scoring, per CLAUDE.md item 2. Swap
-    `thesis_filter_fn` for the real Thesis Engine call at a sync point; it must accept a
-    candidate dict and return {"thesis_match": bool, ...} per the contract shape."""
-    if thesis_filter_fn is None:
-        return candidates
-    return [c for c in candidates if thesis_filter_fn(c).get("thesis_match")]
+    """Filter the candidate pool BEFORE scoring, per CLAUDE.md item 2. Defaults to the
+    real Thesis Engine (_real_thesis_filter) -- pass an explicit thesis_filter_fn to
+    override (e.g. in tests). Any override must accept a candidate dict and return
+    {"thesis_match": bool, ...} per the contract shape."""
+    filter_fn = thesis_filter_fn or _real_thesis_filter
+    return [c for c in candidates if filter_fn(c).get("thesis_match")]
 
 
 # ---------------------------------------------------------------------------
 # Dedup / enrich / tag by source -> one candidate per identity
 # ---------------------------------------------------------------------------
 
-def _github_signals_for_owner(owner: str, repos: list[dict]) -> GithubSignals:
-    owner_repos = [r for r in repos if r["owner"] == owner]
+def _dedup_by_key(items: list[dict], key: str) -> list[dict]:
+    """Guards against the same item appearing twice within a single fetch result (e.g. a
+    retried request) inflating that owner's counts. Not about cross-run history -- Memory
+    (B's signals table) is explicitly append-only across runs by design; this is just
+    protecting the in-memory aggregation for one pass from a duplicated row."""
+    seen = set()
+    deduped = []
+    for item in items:
+        if item[key] in seen:
+            continue
+        seen.add(item[key])
+        deduped.append(item)
+    return deduped
+
+
+def _github_signals_for_owner(owner_key: str, repos: list[dict]) -> GithubSignals:
+    owner_repos = [r for r in repos if r["owner"].casefold() == owner_key]
     if not owner_repos:
         return GithubSignals()
     now = datetime.now(timezone.utc)
@@ -176,27 +221,55 @@ def _github_signals_for_owner(owner: str, repos: list[dict]) -> GithubSignals:
 
 def build_candidate_pool(github_repos: list[dict], hn_posts: list[dict], arxiv_papers: list[dict]) -> list[dict]:
     """Dedup/enrich/tag by source (CLAUDE.md item 3): merges the three bounded feeds into
-    one candidate per identity (GitHub username / HN author / arXiv author-name -- these
-    are treated as distinct identity namespaces, so this is a heuristic merge, not a
-    verified real-world identity match), tagged with which sources contributed."""
+    one candidate per identity, tagged with which sources contributed.
+
+    Identity matching is case-insensitive (GitHub/HN handles are effectively
+    case-insensitive on the platforms themselves, so "PriyaR" and "priyar" are almost
+    certainly the same account) but still exact-match otherwise -- no fuzzy matching. That
+    matters most for arXiv: authors are listed as full human names ("Priya Raman"), a
+    fundamentally different format from GitHub/HN handles ("priyar"), so those almost never
+    collide by string equality. That's intentional: under-merging (missing that two records
+    are the same person) is the safe failure mode here, over-merging (fuzzy-combining two
+    different people's evidence into one profile) corrupts Memory in a way that's much
+    harder to detect and undo later. Cross-referencing arXiv full names against GitHub/HN
+    handles for the same real person is a real gap, not solved here -- it needs actual
+    identity resolution (e.g. matching against a bio/profile field), not string comparison.
+
+    Only a paper's first and last author are counted as candidates, not every co-author --
+    a full author list is not a list of founder candidates, and treating every name as one
+    previously inflated a single 20-author paper into 20 candidates from one signal."""
+    github_repos = _dedup_by_key(github_repos, "repo_id")
+    hn_posts = _dedup_by_key(hn_posts, "hn_id")
+    arxiv_papers = _dedup_by_key(arxiv_papers, "arxiv_id")
+
+    canonical: dict[str, str] = {}  # casefolded key -> first-seen original casing
     identities: dict[str, set[str]] = {}
 
+    def _register(raw_identity: str, source: str) -> None:
+        key = raw_identity.casefold()
+        canonical.setdefault(key, raw_identity)
+        identities.setdefault(key, set()).add(source)
+
     for repo in github_repos:
-        identities.setdefault(repo["owner"], set()).add("github")
+        _register(repo["owner"], "github")
     for post in hn_posts:
         if post.get("author"):
-            identities.setdefault(post["author"], set()).add("devpost_hn")
+            _register(post["author"], "devpost_hn")
     for paper in arxiv_papers:
-        for author in paper["authors"]:
-            identities.setdefault(author, set()).add("arxiv")
+        lead_authors = {paper["authors"][0], paper["authors"][-1]} if paper["authors"] else set()
+        for author in lead_authors:
+            _register(author, "arxiv")
 
     candidates = []
-    for identity, sources in identities.items():
-        hn_for_identity = [p for p in hn_posts if p.get("author") == identity]
-        arxiv_for_identity = [p for p in arxiv_papers if identity in p["authors"]]
+    for key, sources in identities.items():
+        identity = canonical[key]
+        hn_for_identity = [p for p in hn_posts if (p.get("author") or "").casefold() == key]
+        arxiv_for_identity = [
+            p for p in arxiv_papers if p["authors"] and key in {p["authors"][0].casefold(), p["authors"][-1].casefold()}
+        ]
 
         public_signals = PublicSignals(
-            github=_github_signals_for_owner(identity, github_repos),
+            github=_github_signals_for_owner(key, github_repos),
             devpost_hn=DevpostHnSignals(
                 launches=len(hn_for_identity),
                 total_upvotes=sum(p["points"] for p in hn_for_identity),
@@ -207,9 +280,111 @@ def build_candidate_pool(github_repos: list[dict], hn_posts: list[dict], arxiv_p
     return candidates
 
 
+def assemble_outbound_signal_intake_output(candidate: dict) -> SignalIntakeOutput:
+    """Wraps an outbound candidate into the real SignalIntakeOutput contract shape --
+    unified with deck_parser.assemble_signal_intake_output's inbound path, instead of
+    outbound candidates living in a separate ad-hoc dict shape indefinitely.
+
+    company_id uses a clearly-documented placeholder convention: f"pending_{identity}".
+    company_id is required and non-optional in the locked contract, and no company is
+    known yet pre-conversion (this is a person, not a company, until they respond) -- so
+    *something* honest has to go there. "pending_" makes it unambiguous to any downstream
+    reader that this isn't a real company_id, and keeping the identity in it keeps each
+    placeholder unique (no collisions in Memory/founders-table keying). Once a candidate
+    converts (applies with a deck, names their company), whatever assembles the real
+    opportunity record should replace this with a real company_id -- that promotion step
+    doesn't live here."""
+    return SignalIntakeOutput(
+        founder_id=candidate["identity"],
+        company_id=f"pending_{candidate['identity']}",
+        deck_claims=[],
+        public_signals=candidate["public_signals"],
+        sourcing_channel="outbound",
+        cold_start_flag=True,
+    )
+
+
 # ---------------------------------------------------------------------------
-# Partial Founder Score -- rule-based, public signals only
+# Partial Founder Score -- rule-based structural signals, plus a qualitative
+# founder-intent check (Tavily) inverse-weighted against how much structural data exists
 # ---------------------------------------------------------------------------
+
+QUALITATIVE_MAX_BONUS = 10  # points, out of the 0-50 partial scale
+
+_FOUNDER_INTENT_JSON_SCHEMA = {
+    "name": "founder_intent_classification",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "is_founder_intent": {"type": "boolean"},
+            "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        },
+        "required": ["is_founder_intent", "confidence"],
+        "additionalProperties": False,
+    },
+}
+_CONFIDENCE_TO_STRENGTH = {"high": 1.0, "medium": 0.6, "low": 0.3}
+
+_CLASSIFY_INSTRUCTIONS = """You are checking whether a short web snippet indicates that a specific \
+person is genuinely founding or building their own startup right now -- not merely mentioned near \
+words like "founder" or "co-founder" in an unrelated or negating context (e.g. "he didn't have a \
+co-founder", an article about founders in general that isn't about this person, a job posting \
+mentioning "CEO", or incidental usage). Only classify is_founder_intent=true if the snippet is \
+genuinely about this specific person actively founding or building something themselves."""
+
+
+def _classify_founder_intent(identity: str, snippet: str, client: OpenAI | None = None) -> dict:
+    """LLM classification of one search snippet -- replaces naive keyword matching, which
+    produced a real false positive in live testing (matched "co-founder" inside "he didn't
+    have a co-founder"). Short, single-snippet prompt to keep the added cost as small as
+    possible while still catching negation/irrelevant-context cases keyword matching
+    can't -- accuracy prioritized over the extra per-candidate cost, per explicit
+    direction."""
+    client = client or OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "user", "content": f"{_CLASSIFY_INSTRUCTIONS}\n\nPerson: {identity}\nSnippet: {snippet}"}],
+        response_format={"type": "json_schema", "json_schema": _FOUNDER_INTENT_JSON_SCHEMA},
+    )
+    payload = json.loads(response.choices[0].message.content)
+    if not payload["is_founder_intent"]:
+        return {"matched": False, "signal_strength": 0.0}
+    return {"matched": True, "signal_strength": _CONFIDENCE_TO_STRENGTH[payload["confidence"]]}
+
+
+def search_founder_intent(identity: str, client: OpenAI | None = None) -> dict:
+    """Qualitative founder-intent check via Tavily -- general web search, not a LinkedIn
+    integration: LinkedIn's login wall means it rarely surfaces full profile content, this
+    does better on personal sites/Twitter/press. Each returned snippet is classified by a
+    short LLM call (see _classify_founder_intent), stopping at the first genuine match, in
+    Tavily's relevance order. Returns signal_strength on 0.0-1.0 (not a hard boolean) so
+    the caller can weight it rather than treat one hit as certain.
+
+    Gated at the call site to run for every post-Thesis-filter candidate, not gated behind
+    a structural-score floor -- a candidate with near-zero GitHub/HN/arXiv signal is
+    exactly the case this is meant to catch, so filtering on structural strength first
+    would exclude the population it exists for."""
+    api_key = os.environ.get("TAVILY_API_KEY")
+    if not api_key:
+        return {"signal_strength": 0.0, "evidence": None, "source_url": None}
+
+    tavily_client = TavilyClient(api_key=api_key)
+    response = tavily_client.search(f"{identity} startup founder building", max_results=3)
+
+    for result in response.get("results", []):
+        content = result.get("content", "")
+        if not content:
+            continue
+        classification = _classify_founder_intent(identity, content, client=client)
+        if classification["matched"]:
+            return {
+                "signal_strength": classification["signal_strength"],
+                "evidence": content[:280],
+                "source_url": result.get("url"),
+            }
+    return {"signal_strength": 0.0, "evidence": None, "source_url": None}
+
 
 def _track_record_subscore(github: GithubSignals) -> float:
     repo_component = min(github.repos, 10) / 10 * 40
@@ -225,19 +400,38 @@ def _traction_subscore(devpost_hn: DevpostHnSignals, arxiv: ArxivSignals) -> flo
     return launch_component + upvote_component + paper_component
 
 
-def compute_partial_founder_score(public_signals: PublicSignals) -> dict:
-    """Track Record (0.30) + Traction Signal (0.20) only -- the other two components of
-    the locked Founder Score formula (Founder-Market Fit, Resilience/Coachability) need
-    deck/interview data outbound candidates don't have yet. Reported on the true 0-50
-    partial scale (0.30 + 0.20 weight budget) rather than rescaled to 0-100, so it never
-    reads as more complete than it is. This is an internal gating value only -- it is not
-    the published Multi-Axis Scorer founder_score contract shape."""
+def _qualitative_bonus(structural_value: float, qualitative_signal: dict) -> float:
+    """Inverse-weighted: the thinner the structural (hard-data) signal already is, the
+    more a qualitative founder-intent hit can contribute -- so it can carry a near-empty
+    profile toward Activate on its own, while adding little on top of an already-strong
+    structural profile (where it'd just be redundant corroboration)."""
+    structural_strength = min(structural_value / 50, 1.0)
+    qualitative_weight = 1.0 - structural_strength
+    return round(qualitative_signal["signal_strength"] * qualitative_weight * QUALITATIVE_MAX_BONUS, 1)
+
+
+def compute_partial_founder_score(public_signals: PublicSignals, qualitative_signal: dict | None = None) -> dict:
+    """Track Record (0.30) + Traction Signal (0.20) from structural public signals -- the
+    other two components of the locked Founder Score formula (Founder-Market Fit,
+    Resilience/Coachability) need deck/interview data outbound candidates don't have yet.
+    Reported on the true 0-50 partial scale (0.30 + 0.20 weight budget) rather than
+    rescaled to 0-100, so it never reads as more complete than it is. This is an internal
+    gating value only -- it is not the published Multi-Axis Scorer founder_score contract
+    shape.
+
+    qualitative_signal (from search_founder_intent) is optional and additive, capped so
+    the total never exceeds the 0-50 scale -- see _qualitative_bonus for the weighting."""
     track_record = _track_record_subscore(public_signals.github)
     traction = _traction_subscore(public_signals.devpost_hn, public_signals.arxiv)
+    structural_value = round(0.30 * track_record + 0.20 * traction, 1)
+
+    bonus = _qualitative_bonus(structural_value, qualitative_signal) if qualitative_signal else 0.0
+
     return {
-        "value": round(0.30 * track_record + 0.20 * traction, 1),
+        "value": min(round(structural_value + bonus, 1), 50),
         "max_possible": 50,
         "trend": "new",
+        "qualitative_bonus_applied": bonus,
     }
 
 
@@ -322,6 +516,15 @@ def resolve_contact_email(identity: str) -> dict:
     return {"channel": "none", "value": None, "source": None}
 
 
+# CAN-SPAM baseline for unsolicited commercial email: a physical mailing address and a
+# working opt-out mechanism are legally required in the body, not optional polish.
+# DEMO VALUES -- not a real registered fund address. Fine for proving the send mechanism
+# works in a demo; must be replaced with the fund's real legal name/address and a real
+# opt-out mechanism before this is ever used for actual outreach beyond a demo.
+_MAILING_ADDRESS_LINE = "FounderScore Fund (Demo) — 123 Demo St, Demo City, ST 00000"
+_UNSUBSCRIBE_LINE = "Reply STOP to this email to unsubscribe from future outreach."
+
+
 def draft_activation_email(candidate: dict, to_email: str) -> dict:
     """Template-based, no LLM call -- keeps this step at zero marginal API cost so it can
     run on every activated candidate without adding to the money/token budget."""
@@ -345,16 +548,18 @@ def draft_activation_email(candidate: dict, to_email: str) -> dict:
         f"{'; '.join(highlights) if highlights else 'your public activity caught our attention'}.\n\n"
         "We're an early-stage fund and would love a short intro call if you're building "
         "something you'd want investor eyes on.\n\n"
-        "Best,\nFounderScore"
+        "Best,\nFounderScore\n\n"
+        f"--\n{_MAILING_ADDRESS_LINE}\n{_UNSUBSCRIBE_LINE}"
     )
     return {"to": to_email, "subject": subject, "body": body}
 
 
 def send_activation_email(email: dict) -> dict:
-    """No email-provider credentials exist yet -- the contract's env vars are only
-    OPENAI_API_KEY / TAVILY_API_KEY. Sending a real cold email to a real person needs that
-    decision made explicitly, not assumed here. Until EMAIL_SMTP_HOST is set, this logs a
-    dry run to activation_outbox.jsonl instead of dispatching anything."""
+    """Until EMAIL_SMTP_HOST is set, this logs a dry run to activation_outbox.jsonl
+    instead of dispatching anything. Once set (see backend/signal_intake/.env), this
+    dispatches for real via _send_via_smtp -- draft_activation_email's body includes demo
+    CAN-SPAM values (_MAILING_ADDRESS_LINE / _UNSUBSCRIBE_LINE); replace those with the
+    fund's real legal address before this is used for anything beyond a demo."""
     if not os.environ.get("EMAIL_SMTP_HOST"):
         record = {**email, "status": "dry_run_logged", "logged_at": datetime.now(timezone.utc).isoformat()}
         with open(OUTBOX_PATH, "a", encoding="utf-8") as f:
@@ -383,10 +588,47 @@ def _send_via_smtp(email: dict) -> dict:
 # Orchestration
 # ---------------------------------------------------------------------------
 
+def _record_signal_intake_in_memory(output: SignalIntakeOutput) -> None:
+    """Persist via B's shared Memory layer (backend/api/db.py) -- unified with
+    deck_parser.record_deck_claims_in_memory: both the inbound and outbound paths now
+    persist through the same SignalIntakeOutput shape instead of two different
+    representations. Memory accumulates evidence from minute one, before conversion, per
+    the contract's Memory layer description ("structured knowledge base ... timestamped,
+    deduplicated, source-tagged, persistent") -- outbound candidates don't wait until they
+    have a real company_id to start being recorded.
+
+    Lazy-imported, same reasoning as deck_parser.record_deck_claims_in_memory: keeps this
+    module importable and its own tests runnable whether or not db.py exists yet on the
+    branch being run."""
+    from backend.api.db import recompute_founder_score, save_signal
+
+    signals = output.public_signals
+    if signals.github.repos:
+        save_signal(output.founder_id, "github", signals.github.model_dump())
+    if signals.devpost_hn.launches:
+        save_signal(output.founder_id, "devpost_hn", signals.devpost_hn.model_dump())
+    if signals.arxiv.papers:
+        save_signal(output.founder_id, "arxiv", signals.arxiv.model_dump())
+    recompute_founder_score(output.founder_id)
+
+
 def run_outbound_pass(thesis_filter_fn=None) -> list[dict]:
-    """End-to-end scaffold: fetch (bounded) -> dedup/tag -> Thesis filter -> partial
-    score -> Activate above threshold -> draft + (dry-run) send. Returns one summary dict
-    per candidate in the post-filter pool."""
+    """End-to-end scaffold: fetch (bounded) -> dedup/tag -> Thesis filter -> assemble the
+    real SignalIntakeOutput -> qualitative founder-intent search + partial score ->
+    Activate above threshold -> draft + (dry-run) send. Returns one summary dict per
+    candidate in the post-filter pool, each carrying its unified "signal_intake_output"
+    (see assemble_outbound_signal_intake_output) -- outbound candidates are no longer a
+    separate ad-hoc shape from the inbound deck path, both produce the same contract
+    object. Every post-filter candidate is written to Memory (see
+    _record_signal_intake_in_memory) regardless of whether they're activated -- the
+    filtered pool is the evidence worth keeping, Activate is a separate downstream
+    decision on top of it.
+
+    The qualitative Tavily search runs for every candidate that survives dedup + the
+    Thesis filter -- gated on pool membership, not on structural score, since gating on
+    structural strength would exclude exactly the near-zero-hard-data candidates the
+    qualitative check exists to catch. Cost is bounded by dedup + the Thesis filter
+    already shrinking the pool, not by a second filter on top."""
     github_repos = fetch_github_trending()
     hn_posts = fetch_show_hn()
     arxiv_papers = fetch_arxiv_recent()
@@ -396,7 +638,10 @@ def run_outbound_pass(thesis_filter_fn=None) -> list[dict]:
 
     results = []
     for candidate in candidates:
-        partial_score = compute_partial_founder_score(candidate["public_signals"])
+        signal_output = assemble_outbound_signal_intake_output(candidate)
+        _record_signal_intake_in_memory(signal_output)
+        qualitative_signal = search_founder_intent(candidate["identity"])
+        partial_score = compute_partial_founder_score(candidate["public_signals"], qualitative_signal)
         activated = should_activate(partial_score)
         outreach = None
 
@@ -417,9 +662,9 @@ def run_outbound_pass(thesis_filter_fn=None) -> list[dict]:
 
         results.append(
             {
-                "identity": candidate["identity"],
+                "signal_intake_output": signal_output,
                 "sources": candidate["sources"],
-                "public_signals": candidate["public_signals"],
+                "qualitative_signal": qualitative_signal,
                 "partial_score": partial_score,
                 "activated": activated,
                 "outreach": outreach,
@@ -430,4 +675,4 @@ def run_outbound_pass(thesis_filter_fn=None) -> list[dict]:
 
 if __name__ == "__main__":
     for result in run_outbound_pass():
-        print(json.dumps({**result, "public_signals": result["public_signals"].model_dump()}, indent=2))
+        print(json.dumps({**result, "signal_intake_output": result["signal_intake_output"].model_dump()}, indent=2))

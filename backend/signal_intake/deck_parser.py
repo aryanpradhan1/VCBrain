@@ -151,6 +151,22 @@ def assemble_signal_intake_output(
     )
 
 
+def record_deck_claims_in_memory(output: SignalIntakeOutput) -> None:
+    """Persist this deck-parse result via B's shared Memory layer (backend/api/db.py):
+    save_signal() for the raw evidence, then recompute_founder_score() since new evidence
+    just arrived -- per that module's documented contract. Deliberately a separate call,
+    not folded into assemble_signal_intake_output(), so building the output stays a pure
+    function and callers choose when the persistence side-effect happens.
+
+    Lazy-imported: backend.api.db is B's module and may not exist yet on every branch --
+    this keeps deck_parser importable (and its own tests runnable) either way. Only fails
+    at call time, once someone actually tries to persist a result."""
+    from backend.api.db import recompute_founder_score, save_signal
+
+    save_signal(output.founder_id, "deck", output.model_dump())
+    recompute_founder_score(output.founder_id)
+
+
 if __name__ == "__main__":
     import sys
 
