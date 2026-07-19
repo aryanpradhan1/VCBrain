@@ -441,15 +441,18 @@ const swotMeta = {
   threats: { cls: "bg-amber-50/80 text-amber-900" },
 }
 
-function MemoBody({ memo, expanded = false }) {
+function MemoBody({ memo, opp, expanded = false }) {
   const { required, optional_or_flagged } = memo
+  const e = opp?.enrichment ?? {}
   const [full, setFull] = useState(false)
   const showFull = expanded || full
   return (
     <Card className="gap-4">
       <CardContent className="space-y-5 pt-5">
+        <MemoTextSection number="01" title="Company snapshot" value={required.company_snapshot} />
+
         <div>
-          <h3 className="mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">Investment hypotheses</h3>
+          <MemoHeading number="02" title="Investment hypotheses" />
           <ol className="space-y-2">
             {required.investment_hypotheses.map((h, i) => (
               <li key={h} className="flex gap-2.5 text-sm leading-relaxed text-foreground/80">
@@ -463,7 +466,7 @@ function MemoBody({ memo, expanded = false }) {
         </div>
 
         <div>
-          <h3 className="mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">SWOT</h3>
+          <MemoHeading number="03" title="SWOT" />
           <div className="grid gap-2.5 sm:grid-cols-2">
             {Object.entries(required.swot ?? {}).map(([key, items]) => (
               <div key={key} className={cn("rounded-xl p-3", (swotMeta[key] ?? swotMeta.strengths).cls)}>
@@ -480,33 +483,17 @@ function MemoBody({ memo, expanded = false }) {
 
         {showFull && (
           <>
-            <div>
-              <h3 className="mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">Company snapshot</h3>
-              <p className="text-sm leading-relaxed text-foreground/80">{required.company_snapshot}</p>
-            </div>
-            <div>
-              <h3 className="mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">Problem & product</h3>
-              <p className="text-sm leading-relaxed text-foreground/80">{required.problem_and_product}</p>
-            </div>
-            <div>
-              <h3 className="mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">Traction & KPIs</h3>
-              <p className="text-sm leading-relaxed text-foreground/80">{required.traction_kpis}</p>
-            </div>
             <Separator />
-            {Object.entries(optional_or_flagged ?? {}).map(([key, value]) => {
-              const flagged = /not disclosed|flagged|unavailable/i.test(value)
-              return (
-                <div key={key}>
-                  <h3 className="mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    {key.replaceAll("_", " ")}
-                  </h3>
-                  <p className={cn("flex items-start gap-1.5 text-sm leading-relaxed", flagged ? "text-amber-700" : "text-foreground/80")}>
-                    {flagged && <Flag className="mt-0.5 size-3.5 shrink-0" />}
-                    {value}
-                  </p>
-                </div>
-              )
-            })}
+            <MemoTextSection number="04" title="Team & history" value={optional_or_flagged?.team_and_history || "Not disclosed"} />
+            <MemoTextSection number="05" title="Problem & product" value={required.problem_and_product} />
+            <MemoTextSection number="06" title="Technology & defensibility" value="Technical architecture, proprietary components, data moat, and model choices are not disclosed in the current evidence package." />
+            <MemoTextSection number="07" title="Market sizing" value={e.market?.basis || "TAM / SAM / SOM and their assumptions are not fully disclosed."} />
+            <MemoListSection number="08" title="Competition" values={e.competitors?.length ? e.competitors : ["Named competitor set: not disclosed"]} />
+            <MemoTextSection number="09" title="Traction & KPIs" value={required.traction_kpis} />
+            <MemoTextSection number="10" title="Financials & round structure" value="Historical P&L, projections, runway, round structure, and next-round timing: not disclosed." />
+            <MemoTextSection number="11" title="Cap table" value={optional_or_flagged?.cap_table || "Not disclosed"} />
+            <MemoTextSection number="12" title="Due diligence log" value={`${opp?.claim_trust?.length || 0} claim categories checked across ${opp?.sources?.length || 0} retained sources; ${opp?.processing_trace?.length || 0} processing steps logged. Open low-confidence items remain visible in Evidence & trust.`} />
+            <MemoTextSection number="13" title="Exit perspective" value="Plausible acquirers, category comparables, and premium drivers have not been assessed at this screening stage." />
           </>
         )}
 
@@ -518,6 +505,49 @@ function MemoBody({ memo, expanded = false }) {
         </button>
       </CardContent>
     </Card>
+  )
+}
+
+function MemoHeading({ number, title }) {
+  return <h3 className="mb-1.5 flex items-center gap-2 text-xs font-medium tracking-wide text-muted-foreground uppercase"><span className="font-semibold text-slate-400">{number}</span>{title}</h3>
+}
+
+function MemoTextSection({ number, title, value }) {
+  const flagged = /not disclosed|not assessed|unavailable|not fully/i.test(String(value))
+  return <div><MemoHeading number={number} title={title} /><p className={cn("flex items-start gap-1.5 text-sm leading-relaxed", flagged ? "text-amber-700" : "text-foreground/80")}>{flagged && <Flag className="mt-0.5 size-3.5 shrink-0" />}{value}</p></div>
+}
+
+function MemoListSection({ number, title, values }) {
+  return <div><MemoHeading number={number} title={title} /><div className="flex flex-wrap gap-1.5">{values.map((value) => <Badge key={value} variant="outline">{value}</Badge>)}</div></div>
+}
+
+function AppendixMemo({ opp }) {
+  const memo = opp.memo
+  const e = opp.enrichment ?? {}
+  const required = memo.required
+  const optional = memo.optional_or_flagged ?? {}
+  const sections = [
+    ["01", "Company snapshot", required.company_snapshot],
+    ["04", "Team & history", optional.team_and_history || "Not disclosed"],
+    ["05", "Problem & product", required.problem_and_product],
+    ["06", "Technology & defensibility", "Technical architecture, proprietary components, data moat, and model choices are not disclosed in the current evidence package."],
+    ["07", "Market sizing", e.market?.basis || "TAM / SAM / SOM and assumptions: not disclosed"],
+    ["08", "Competition", e.competitors?.length ? e.competitors.join(" · ") : "Named competitor set: not disclosed"],
+    ["09", "Traction & KPIs", required.traction_kpis],
+    ["10", "Financials & round structure", "Historical P&L, projections, runway, round structure, and next-round timing: not disclosed."],
+    ["11", "Cap table", optional.cap_table || "Not disclosed"],
+    ["12", "Due diligence log", `${opp.claim_trust?.length || 0} claim categories checked · ${opp.sources?.length || 0} retained sources · ${opp.processing_trace?.length || 0} processing steps logged.`],
+    ["13", "Exit perspective", "Plausible acquirers, category comparables, and premium drivers: not assessed at this screening stage."],
+  ]
+  return (
+    <article className="memo-export-only">
+      <div className="memo-export-decision"><span>Recommendation</span><strong>{verdictMeta[opp.verdict].label}</strong><span>Founder Score</span><strong>{opp.founder_score.value} ± {opp.founder_score.confidence_interval}</strong></div>
+      <section className="memo-export-section"><h2>01 · Company snapshot</h2><p>{required.company_snapshot}</p></section>
+      <section className="memo-export-section"><h2>02 · Investment hypotheses</h2><ol>{required.investment_hypotheses.map((item) => <li key={item}>{item}</li>)}</ol></section>
+      <section className="memo-export-section"><h2>03 · SWOT</h2><div className="memo-export-swot">{Object.entries(required.swot || {}).map(([key, values]) => <div key={key}><h3>{key}</h3><ul>{(values || []).map((value) => <li key={value}>{value}</li>)}</ul></div>)}</div></section>
+      {sections.slice(1).map(([number, title, value]) => <section key={number} className="memo-export-section"><h2>{number} · {title}</h2><p>{value}</p></section>)}
+      <section className="memo-export-section"><h2>Evidence index</h2><ol>{(opp.sources || []).slice(0, 20).map((source, index) => <li key={`${source.url}-${index}`}><strong>[{index + 1}] {source.title}</strong><span>{source.url}</span></li>)}</ol></section>
+    </article>
   )
 }
 
@@ -672,6 +702,7 @@ export default function Memo() {
             <div className="memo-print-company">{opp.company_name}</div>
             <div className="memo-print-meta">Prepared for Maschmeyer Group · Confidential</div>
           </header>
+          <AppendixMemo opp={opp} />
           <motion.div
             initial={{ opacity: 0, x: -12 }}
             animate={{ opacity: 1, x: 0 }}
@@ -680,7 +711,7 @@ export default function Memo() {
             <SummaryRail opp={opp} />
           </motion.div>
 
-          <motion.div variants={stagger.container} initial="initial" animate="animate" className="min-w-0 space-y-7">
+          <motion.div variants={stagger.container} initial="initial" animate="animate" className="memo-screen-content min-w-0 space-y-7">
             <motion.div variants={stagger.item}>
               <Section icon={Lightbulb} title="At a glance">
                 <Snapshot e={e} />
@@ -786,7 +817,7 @@ export default function Memo() {
 
             <motion.div variants={stagger.item}>
               <Section icon={FileText} title="Investment memo" sub="Appendix-1 structure — flagged fields never fabricated">
-                <MemoBody memo={opp.memo} expanded={printing} />
+                <MemoBody memo={opp.memo} opp={opp} expanded={printing} />
               </Section>
             </motion.div>
 

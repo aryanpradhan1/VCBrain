@@ -17,7 +17,6 @@ import { Page, stagger } from "@/components/shared/page"
 import { ScoreBadge } from "@/components/shared/score-badge"
 import { SignalIcons } from "@/components/shared/signal-chips"
 import { CompanyMark } from "@/components/shared/company-mark"
-import { SourcingIntelligence } from "@/components/shared/sourcing-intelligence"
 import {
   fmtAmount,
   trustTally,
@@ -227,8 +226,6 @@ export default function Dashboard() {
           <StatTile icon={Banknote} label="Checks recommended" value={stats.totalK} prefix="$" suffix="K" caption="pending partner decision" tint="bg-amber-50 text-amber-600" />
         </div>
       )}
-
-      {!sourcingOnly && data && <SourcingIntelligence opportunities={data} />}
 
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
         {verdictFilters.map((v) => (

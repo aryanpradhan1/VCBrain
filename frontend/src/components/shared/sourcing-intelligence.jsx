@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { Database, ExternalLink, Network, Users } from "lucide-react"
+import { BriefcaseBusiness, Database, ExternalLink, GraduationCap, Network, Sparkles, TrendingUp, Users } from "lucide-react"
 
 import { CompanyMark } from "@/components/shared/company-mark"
 import { assetUrl } from "@/lib/api"
@@ -81,6 +81,7 @@ export function SourcingIntelligence({ opportunities = [] }) {
     }
     return { companies: companiesWithPosition, people: peopleWithPosition, affiliations: affiliationsWithPosition, sources: sourcesWithPosition, edges, height }
   }, [opportunities, scope])
+  const trends = useMemo(() => buildCohortTrends(opportunities), [opportunities])
 
   if (!graph.companies.length) return null
   const connected = (companyId) => !focus || focus === companyId
@@ -172,11 +173,81 @@ export function SourcingIntelligence({ opportunities = [] }) {
         </div>
       </div>
 
+      {trends && (
+        <div className="border-t border-border px-4 py-4">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-semibold">Patterns in the verified cohort</h3>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">Descriptive signals, not causal claims. Scores are curated reference values, not live underwriting.</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-semibold text-slate-500">n = {trends.total}</span>
+          </div>
+          <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+            {trends.cards.map((item) => <TrendCard key={item.label} {...item} />)}
+          </div>
+          <div className="mt-3 flex items-start gap-2 rounded-lg bg-violet-50/70 px-3 py-2.5 text-[10px] leading-relaxed text-violet-900">
+            <Sparkles className="mt-0.5 size-3.5 shrink-0 text-violet-600" />
+            <span><strong>Channel opportunity:</strong> {trends.insight}</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 border-t border-border bg-slate-50/60 px-4 py-3 text-[10px] leading-relaxed text-muted-foreground">
         <Users className="size-3.5 shrink-0" />
         {scope === "public" ? "Verified-public network: real company marks and founder portraits from cited official profiles." : "Entire pipeline: records without verified brand or portrait evidence remain text-only—no fake logos or guessed identities."} Live applications use bounded enrichment.
       </div>
     </section>
+  )
+}
+
+function buildCohortTrends(opportunities) {
+  const cohort = opportunities.filter((item) => item.enrichment?.reference_profile)
+  if (!cohort.length) return null
+  const scoreOf = (company) => Number(company.founder_score?.value) || 0
+  const overall = cohort.reduce((sum, company) => sum + scoreOf(company), 0) / cohort.length
+  const peopleText = (company) => (company.enrichment?.founders || []).map((founder) => [founder.role, founder.bio, ...(founder.affiliations || [])].join(" ")).join(" ").toLowerCase()
+  const affiliationCounts = new Map()
+  for (const company of cohort) {
+    const companyAffiliations = new Set((company.enrichment?.founders || []).flatMap((founder) => founder.affiliations || []).map(normalizeAffiliation))
+    for (const name of companyAffiliations) affiliationCounts.set(name, (affiliationCounts.get(name) || 0) + 1)
+  }
+  const [topAffiliation = "Y Combinator", topCount = 0] = [...affiliationCounts.entries()].sort((a, b) => b[1] - a[1])[0] || []
+  const summarize = (label, Icon, predicate, detail) => {
+    const matching = cohort.filter(predicate)
+    const average = matching.length ? matching.reduce((sum, company) => sum + scoreOf(company), 0) / matching.length : 0
+    const delta = Math.round(average - overall)
+    return { label, Icon, count: matching.length, average: Math.round(average), delta, detail }
+  }
+  return {
+    total: cohort.length,
+    cards: [
+      summarize(topAffiliation, TrendingUp, (company) => (company.enrichment?.founders || []).some((founder) => (founder.affiliations || []).map(normalizeAffiliation).includes(topAffiliation)), `${topCount} of ${cohort.length} companies share this sourcing path`),
+      summarize("Research / PhD signal", GraduationCap, (company) => /phd|university|berkeley|brown|michigan|research|laboratory/.test(peopleText(company)), "Academic and research history found in founder evidence"),
+      summarize("Prior operator signal", BriefcaseBusiness, (company) => /spotify|docker|groq|sendbird|meta|founding engineer|research scientist/.test(peopleText(company)), "Prior scale-up or technical operating experience"),
+      summarize("Multi-founder teams", Users, (company) => (company.enrichment?.founders || []).length > 1, "Two or more mapped founders in the public record"),
+    ],
+    insight: `${topAffiliation} is the densest path in this small reference set (${topCount}/${cohort.length}). The graph makes that concentration visible so the fund can seek adjacent institutions instead of mistaking one network for the whole market.`,
+  }
+}
+
+function normalizeAffiliation(value = "") {
+  if (/y combinator/i.test(value)) return "Y Combinator"
+  if (/berkeley/i.test(value)) return "UC Berkeley"
+  return value.trim()
+}
+
+function TrendCard({ label, Icon, count, average, delta, detail }) {
+  const deltaLabel = `${delta >= 0 ? "+" : ""}${delta} vs cohort`
+  return (
+    <div className="rounded-xl border border-border bg-slate-50/60 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <span className="flex size-7 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm"><Icon className="size-3.5" /></span>
+        <span className={cn("text-[9px] font-semibold tabular-nums", delta > 0 ? "text-emerald-600" : delta < 0 ? "text-amber-600" : "text-slate-500")}>{deltaLabel}</span>
+      </div>
+      <div className="mt-2 text-[11px] font-semibold">{label}</div>
+      <div className="mt-0.5 flex items-baseline gap-1.5"><strong className="text-lg tabular-nums">{average || "—"}</strong><span className="text-[9px] text-muted-foreground">avg Founder Score · {count} matches</span></div>
+      <p className="mt-1 text-[9px] leading-snug text-muted-foreground">{detail}</p>
+    </div>
   )
 }
 

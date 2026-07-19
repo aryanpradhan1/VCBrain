@@ -5,6 +5,7 @@ import {
   FilePlus2,
   Gauge,
   Inbox,
+  Network,
   Radar,
   Settings,
   Sparkles,
@@ -16,6 +17,7 @@ import { opportunities } from "@/fixtures/opportunities"
 const investorNav = [
   { to: "/", label: "Pipeline", icon: Inbox, end: true, count: opportunities.length },
   { to: "/?channel=outbound", label: "Sourcing radar", icon: Radar, end: false },
+  { to: "/network", label: "Network intelligence", icon: Network },
   { to: "/thesis", label: "Thesis Engine", icon: Crosshair },
 ]
 
@@ -129,6 +131,9 @@ export function InvestorShell() {
           </NavLink>
           <NavLink to="/thesis" className="rounded-full px-2.5 py-1 font-medium text-muted-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-foreground">
             Thesis
+          </NavLink>
+          <NavLink to="/network" className="rounded-full px-2.5 py-1 font-medium text-muted-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-foreground">
+            Network
           </NavLink>
         </nav>
       </header>
