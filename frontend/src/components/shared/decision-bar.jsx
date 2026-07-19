@@ -53,11 +53,9 @@ export function DecisionBar({ opportunity, className }) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Recommended check
+            Investment decision
           </div>
-          <div className="text-2xl font-semibold tracking-tight tabular-nums">
-            {fmtAmount(opportunity.amount_recommended)}
-          </div>
+          {opportunity.amount_recommended > 0 ? <><div className="text-2xl font-semibold tracking-tight tabular-nums">{fmtAmount(opportunity.amount_recommended)}</div><p className="mt-0.5 text-[11px] text-muted-foreground">Recommended check, subject to partner decision</p></> : <><div className="text-xl font-semibold tracking-tight">No check recommended</div><p className="mt-0.5 text-[11px] text-muted-foreground">Record a review decision or override with documented conviction.</p></>}
         </div>
         <div className="flex items-center gap-2">
           {options.map(({ key, label, Icon, cls }) => (

@@ -42,6 +42,15 @@ def build_enrichment(
         "website": profile.get("website") or _website_from_sources(sources, company),
         "founders": team,
         "market": market,
+        "news": [
+            {
+                "title": source.get("title") or "Public coverage",
+                "url": source.get("url"),
+                "source": source.get("source") or "Public web",
+                "date": (source.get("retrieved_at") or "")[:10] or "Checked now",
+            }
+            for source in sources if source.get("type") == "news"
+        ][:5],
         "pmf": {"signal": "early", "note": traction_note},
         "calculation_checks": _quantitative_checks(traction_claims),
         "agent_trace": trace,
@@ -173,31 +182,72 @@ def _traction_note(claims: list[dict[str, Any]]) -> str:
 
 def _team_members(profile: dict[str, Any], claims: list[dict[str, Any]], sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     team_text = claims[0]["value"] if claims else ""
-    entries = re.findall(r"([^,:]+?)\s*\(([^)]+)\)", team_text)
-    if not entries:
-        entries = [(profile.get("founder_name") or "Founder", profile.get("founder_role") or "Founder")]
-    # A submitted headshot is the reliable profile image. Do not imply a
-    # GitHub avatar came from LinkedIn: LinkedIn does not permit dependable
-    # profile-photo retrieval by this backend. GitHub is used only when no
-    # LinkedIn identity was supplied.
-    avatar = profile.get("photo_url")
-    if not avatar and not profile.get("linkedin"):
-        avatar = next((source.get("image_url") for source in sources if source.get("type") == "github" and source.get("image_url")), None)
-    members = []
-    for index, (name, role) in enumerate(entries):
-        cleaned_name = re.sub(r"^Team:\s*", "", name).strip()
-        is_submitter = cleaned_name.casefold() in str(profile.get("founder_name", "")).casefold() or index == 0
-        members.append({
-            "name": profile.get("founder_name") if is_submitter else cleaned_name,
-            "role": profile.get("founder_role") if is_submitter else role.strip(),
-            "avatar": avatar if is_submitter else None,
-            "background": "Listed in the uploaded deck." if not is_submitter else (team_text or "Listed in the uploaded deck."),
-            "linkedin": profile.get("linkedin") if is_submitter else None,
-            "github": profile.get("github") if is_submitter else None,
-            "x": profile.get("x") if is_submitter else None,
-            "ai_read": "Founder-submitted profile link and deck identity." if is_submitter else "Deck-listed team member; no public profile was supplied for identity matching.",
-        })
+    deck_entries = [
+        (re.sub(r"^Team:\s*", "", name).strip(), role.strip())
+        for name, role in re.findall(r"([^,:]+?)\s*\(([^)]+)\)", team_text)
+    ]
+    submitted = [item for item in profile.get("team_members") or [] if isinstance(item, dict) and item.get("name")]
+    roles_by_name = {_member_key(name): role for name, role in deck_entries}
+    founder_name = str(profile.get("founder_name") or "Founder").strip()
+
+    founder_avatar = profile.get("linkedin_avatar_url") or profile.get("photo_url")
+    # GitHub avatars are allowed only where the founder did not provide a LinkedIn
+    # identity; presentation never labels that avatar as a LinkedIn photo.
+    if not founder_avatar and not profile.get("linkedin"):
+        founder_avatar = next((source.get("image_url") for source in sources if source.get("type") == "github" and source.get("image_url")), None)
+    members = [_member_card(
+        name=founder_name,
+        role=str(profile.get("founder_role") or roles_by_name.get(_member_key(founder_name)) or "Founder"),
+        avatar=founder_avatar,
+        linkedin=profile.get("linkedin"), github=profile.get("github"), x=profile.get("x"),
+        background=_profile_background(profile.get("profile_enrichment"), team_text or "Founder-submitted identity."),
+        ai_read="Exact public profile supplied by the founder." if profile.get("linkedin") else "Founder identity supplied with the application.",
+    )]
+    seen = {_member_key(founder_name)}
+    for item in submitted:
+        name = str(item.get("name") or "").strip()
+        key = _member_key(name)
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        members.append(_member_card(
+            name=name,
+            role=str(item.get("role") or roles_by_name.get(key) or "Co-founder"),
+            avatar=item.get("linkedin_avatar_url") or item.get("photo_url"),
+            linkedin=item.get("linkedin"), github=item.get("github"), x=item.get("x"),
+            background=_profile_background(item.get("profile_enrichment"), "Founder-submitted team profile."),
+            ai_read="Exact public profile supplied by the founder." if item.get("linkedin") else "Team member supplied by the founder; no public identity link was provided.",
+        ))
+    for name, role in deck_entries:
+        if _member_key(name) in seen:
+            continue
+        seen.add(_member_key(name))
+        members.append(_member_card(
+            name=name, role=role, avatar=None, linkedin=None, github=None, x=None,
+            background="Listed in the uploaded deck.",
+            ai_read="Deck-listed team member; no public profile was supplied for identity matching.",
+        ))
     return members
+
+
+def _member_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.casefold())
+
+
+def _profile_background(enrichment: Any, fallback: str) -> str:
+    if isinstance(enrichment, dict) and enrichment.get("status") == "matched":
+        title = str(enrichment.get("job_title") or "").strip()
+        company = str(enrichment.get("job_company_name") or "").strip()
+        headline = str(enrichment.get("headline") or "").strip()
+        if title and company:
+            return f"Public profile: {title} at {company}."
+        if headline:
+            return headline[:260]
+    return fallback
+
+
+def _member_card(**fields: Any) -> dict[str, Any]:
+    return fields
 
 
 def _team_history(members: list[dict[str, Any]]) -> str:

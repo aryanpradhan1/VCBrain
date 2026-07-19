@@ -29,7 +29,7 @@ from backend.api.document_intake import (
     extract_document,
 )
 from backend.api.presentation import build_enrichment, concise_memo, relevant_sources
-from backend.api.source_enrichment import fetch_site_metadata, github_profile_signal, search_press, submitted_link_sources, valid_public_url
+from backend.api.source_enrichment import enrich_submitted_people, fetch_site_metadata, github_profile_signal, search_press, submitted_link_sources, valid_public_url
 from backend.api.store import ApplicationStore
 
 
@@ -40,6 +40,7 @@ MEDIA_ROOT = DATA_ROOT / "media"
 FIXTURE_ROOT = ROOT / "shared" / "fixtures"
 MAX_DOCUMENT_BYTES = 25 * 1024 * 1024
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
+MAX_TEAM_MEMBERS = 8
 
 for directory in (UPLOAD_ROOT, MEDIA_ROOT):
     directory.mkdir(parents=True, exist_ok=True)
@@ -129,6 +130,7 @@ class SourceRecord(BaseModel):
     url: str
     excerpt: str = ""
     image_url: str | None = None
+    favicon_url: str | None = None
     preview_url: str | None = None
     source: str = ""
     page: int | None = None
@@ -257,6 +259,34 @@ _GEO_ENGINE_NAMES = {
 
 def _check_amount(check: str) -> int:
     return {"$50K": 50_000, "$100K": 100_000, "$250K": 250_000}[check]
+
+
+def _parse_team_members(value: str) -> list[dict[str, str]]:
+    """Keep optional cofounder identity records small and explicitly supplied."""
+    if not value.strip():
+        return []
+    try:
+        raw_members = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="Team profiles must be valid form data.") from exc
+    if not isinstance(raw_members, list) or len(raw_members) > MAX_TEAM_MEMBERS:
+        raise HTTPException(status_code=422, detail=f"Add at most {MAX_TEAM_MEMBERS} team profiles.")
+    members: list[dict[str, str]] = []
+    for raw in raw_members:
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()[:120]
+        if not name:
+            continue
+        member = {
+            "name": name,
+            "role": str(raw.get("role") or "Co-founder").strip()[:120],
+            "linkedin": valid_public_url(str(raw.get("linkedin") or "")),
+            "github": valid_public_url(str(raw.get("github") or "")),
+            "arxiv": valid_public_url(str(raw.get("arxiv") or "")),
+        }
+        members.append({key: item for key, item in member.items() if item})
+    return members
 
 
 def _engine_thesis(config: dict[str, Any]) -> dict[str, Any]:
@@ -634,43 +664,45 @@ def _process_application(company_id: str) -> None:
         signal = signal_model.model_dump()
         traces.append({"agent": "intake", "label": "Signal Intake", "kind": "rule", "summary": f"{len(claims)} deck claims extracted; checking supplied profiles and company-specific coverage.", "ms": 1, "stage": "checking_sources"})
         store.update_processing(company_id, status="processing", signal=signal, documents=extracted, trace=traces)
-        github, github_source = github_profile_signal(record["profile"].get("github"))
+        profile, people_sources = enrich_submitted_people(record["profile"])
+        github, github_source = github_profile_signal(profile.get("github"))
         signal["public_signals"]["github"] = github
-        sources = submitted_link_sources(record["profile"])
+        sources = submitted_link_sources(profile)
+        sources.extend(people_sources)
         if github_source:
             sources.append(github_source)
-        site_source = fetch_site_metadata(record["profile"].get("website"))
+        site_source = fetch_site_metadata(profile.get("website"))
         if site_source:
             sources.append(site_source)
-        sources.extend(search_press(record["company_name"], record["profile"].get("website")))
+        sources.extend(search_press(record["company_name"], profile.get("website")))
         # A company site is commonly mentioned on the company LinkedIn result
         # rather than typed into the form. Promote only the company-matching
         # domain discovered by the bounded source scan, then retain its own
         # metadata as an auditable source for the investor view.
-        discovered_website = build_enrichment(record["profile"], signal, sources, traces).get("website")
-        if discovered_website and not record["profile"].get("website"):
-            profile = {**record["profile"], "website": discovered_website}
+        discovered_website = build_enrichment(profile, signal, sources, traces).get("website")
+        if discovered_website and not profile.get("website"):
+            profile = {**profile, "website": discovered_website}
             discovered_site_source = fetch_site_metadata(discovered_website)
             if discovered_site_source:
                 sources.append(discovered_site_source)
-            store.upsert_application(
-                company_id=company_id,
-                founder_id=record["founder_id"],
-                company_name=record["company_name"],
-                status="processing",
-                profile=profile,
-                documents=extracted,
-                sources=sources,
-                signal=signal,
-                trace=traces,
-            )
         sources.extend({
             "type": "deck", "title": item["title"], "url": document["file_url"], "excerpt": item.get("text", ""),
             "source": "Founder-uploaded document", "page": item.get("page"), "preview_url": item.get("preview_url"),
         } for item in extracted)
         traces.append({"agent": "scorer", "label": "Multi-Axis Scorer", "kind": "ai", "summary": "Scoring independent founder, market, and idea-versus-market axes.", "ms": 1, "stage": "scoring"})
         store.update_processing(company_id, status="processing", signal=signal, documents=extracted, sources=sources, trace=traces)
-        analysis = _analysis_for(signal, record["profile"], traces)
+        store.upsert_application(
+            company_id=company_id,
+            founder_id=record["founder_id"],
+            company_name=record["company_name"],
+            status="processing",
+            profile=profile,
+            documents=extracted,
+            sources=sources,
+            signal=signal,
+            trace=traces,
+        )
+        analysis = _analysis_for(signal, profile, traces)
         store.update_processing(company_id, status="ready", signal=signal, analysis=analysis, documents=extracted, sources=sources, trace=traces)
         _cache_application(store.get(company_id) or {})
     except Exception as exc:
@@ -692,9 +724,11 @@ def _refresh_existing_analysis(company_id: str) -> None:
         discovered = build_enrichment(profile, signal, record.get("sources", []), traces).get("website")
         if discovered and not profile.get("website"):
             profile["website"] = discovered
+        profile, people_sources = enrich_submitted_people(profile)
         github, github_source = github_profile_signal(profile.get("github"))
         signal["public_signals"]["github"] = github
         sources = submitted_link_sources(profile)
+        sources.extend(people_sources)
         if github_source:
             sources.append(github_source)
         site_source = fetch_site_metadata(profile.get("website"))
@@ -738,6 +772,7 @@ def submit_application(
     sector: str = Form("", max_length=100),
     stage: str = Form("Pre-seed", max_length=60),
     geography: str = Form("", max_length=120),
+    team_members_json: str = Form("", max_length=12000),
     founder_photo: UploadFile | None = File(None),
 ) -> ApplicationSubmission:
     if not deck.filename or not allowed_filename(deck.filename):
@@ -756,6 +791,9 @@ def submit_application(
             "arxiv": valid_public_url(arxiv), "sector": sector.strip() or "Not disclosed", "stage": stage.strip() or "Not disclosed",
             "geography": geography.strip() or "Not disclosed", "company_name": company_name.strip(),
         }
+        team_members = _parse_team_members(team_members_json)
+        if team_members:
+            profile["team_members"] = team_members
         if founder_photo and founder_photo.filename:
             photo_extension = Path(founder_photo.filename).suffix.lower() or ".jpg"
             photo_name = f"{company_id}-founder{photo_extension}"

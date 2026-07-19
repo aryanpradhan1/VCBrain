@@ -10,6 +10,7 @@ import {
   ExternalLink,
   FileText,
   Flag,
+  GitBranch,
   Lightbulb,
   MapPin,
   Newspaper,
@@ -36,6 +37,7 @@ import { ScoreRing } from "@/components/shared/score-ring"
 import { Expandable, Section } from "@/components/shared/section"
 import { scoreDot, verdictMeta } from "@/components/shared/semantics"
 import { SignalChips } from "@/components/shared/signal-chips"
+import { CompanyMark, SourceMark } from "@/components/shared/company-mark"
 import { useSources } from "@/components/shared/source-drawer"
 import { ErrorBanner } from "@/components/shared/states"
 import { TrendArrow } from "@/components/shared/trend"
@@ -52,18 +54,29 @@ function CitationChips({ citations, opp }) {
     if (page) return opp.sources?.find((source) => source.type === "deck" && String(source.page) === page)
     return opp.sources?.find((source) => source.title?.toLowerCase().includes(citation.toLowerCase()))
   }
+  const metaFor = (citation) => {
+    const record = sourceFor(citation)
+    const slide = citation.match(/(?:deck[ _-]?slide|slide)[_\s-]*(\d+)/i)?.[1]
+    if (slide) return { label: `Slide ${slide}`, Icon: FileText, record }
+    if (/github/i.test(citation)) return { label: "GitHub", Icon: GitBranch, record }
+    if (/arxiv|paper/i.test(citation)) return { label: "Research", Icon: FileText, record }
+    return { label: record?.title || citation.replaceAll("_", " "), Icon: Quote, record }
+  }
   return (
     <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border pt-3">
       {citations.map((c) => (
-        <button
+        (() => {
+          const { label, Icon, record } = metaFor(c)
+          return <button
           key={c}
           type="button"
-          onClick={() => open({ citation: c, opp, record: sourceFor(c) })}
-          className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-full bg-secondary/70 px-2.5 py-1 text-[11px] font-medium text-foreground/70 transition-colors hover:bg-secondary hover:text-foreground"
+          onClick={() => open({ citation: c, opp, record })}
+          className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[10px] font-semibold text-foreground/70 transition-colors hover:bg-secondary hover:text-foreground"
           title={`Open source: ${c}`}>
-          <Quote className="size-3 shrink-0 text-muted-foreground" />
-          <span className="truncate">{c}</span>
+          <Icon className="size-3 shrink-0 text-muted-foreground" />
+          <span className="truncate">{label}</span>
         </button>
+        })()
       ))}
     </div>
   )
@@ -75,12 +88,7 @@ function SummaryRail({ opp }) {
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex flex-col items-center text-center">
-        <span
-          className={cn(
-            "mb-3 flex size-12 items-center justify-center rounded-lg bg-slate-800 text-base font-bold text-white",
-          )}>
-          {opp.company_name[0]}
-        </span>
+        <CompanyMark name={opp.company_name} sources={opp.sources} className="mb-3 size-12 rounded-lg text-base" imageClassName="mb-3 size-12 rounded-lg border border-border bg-white p-1.5 shadow-sm" />
         <h1 className="text-lg font-semibold tracking-tight">{opp.company_name}</h1>
         {e && <p className="mt-1 text-[13px] leading-snug text-muted-foreground">{e.one_liner}</p>}
 
@@ -263,7 +271,7 @@ function FounderCard({ founder }) {
           <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-violet-50/70 px-2.5 py-2">
             <ShieldCheck className="mt-0.5 size-3 shrink-0 text-violet-500" />
             <p className="text-[11px] leading-snug text-violet-900/80">
-              <span className="font-semibold">AI verified: </span>
+              <span className="font-semibold">Profile check: </span>
               {founder.ai_read}
             </p>
           </div>
@@ -300,9 +308,10 @@ function AxisCards({ opp }) {
               <TrendArrow trend={axis.trend} withLabel />
             </div>
             <div className="pt-1">{head}</div>
+            <AxisVisual name={name} axis={axis} />
           </CardHeader>
           <CardContent>
-            <Expandable lines={3}>
+            <Expandable lines={2}>
               <p className="text-sm leading-relaxed text-foreground/80">{axis.rationale}</p>
             </Expandable>
             <CitationChips citations={axis.citations} opp={opp} />
@@ -311,6 +320,15 @@ function AxisCards({ opp }) {
       ))}
     </div>
   )
+}
+
+function AxisVisual({ name, axis }) {
+  if (name === "Founder") {
+    return <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={cn("h-full rounded-full", scoreDot(axis.score).replace("bg-", "bg-"))} style={{ width: `${Math.max(6, axis.score)}%` }} /></div>
+  }
+  const active = axis.rating === "bullish" ? 2 : axis.rating === "neutral" ? 1 : 0
+  const colors = ["bg-red-300", "bg-amber-300", "bg-emerald-400"]
+  return <div className="mt-3 grid grid-cols-3 gap-1" aria-label={`${name}: ${axis.rating}`}>{colors.map((color, index) => <span key={color} className={cn("h-1.5 rounded-full", index === active ? color : "bg-slate-100")} />)}</div>
 }
 
 // ── Trust ─────────────────────────────────────────────────────────────────
@@ -338,6 +356,7 @@ function ConfidenceMeter({ confidence }) {
 
 function TrustList({ claims, opp }) {
   const { open } = useSources()
+  const [showAll, setShowAll] = useState(false)
   const confidenceRank = { low: 0, medium: 1, high: 2 }
   const grouped = Object.values(
     (claims ?? []).reduce((groups, claim) => {
@@ -363,7 +382,7 @@ function TrustList({ claims, opp }) {
       .replace(/https?:\/\/\S+/g, "")
       .replace(/\s+/g, " ")
       .trim()
-    return withoutUrls.length > 260 ? `${withoutUrls.slice(0, 257).trimEnd()}…` : withoutUrls
+    return withoutUrls.length > 190 ? `${withoutUrls.slice(0, 187).trimEnd()}…` : withoutUrls
   }
 
   const sourceFor = (claim) => {
@@ -378,7 +397,7 @@ function TrustList({ claims, opp }) {
     <Card className="gap-0 py-0">
       <CardContent className="px-0">
         <ul>
-          {grouped.map((c, i) => (
+          {(showAll ? grouped : grouped.slice(0, 4)).map((c, i) => (
             <li key={c.claim}>
               {i > 0 && <Separator />}
               <button
@@ -390,11 +409,15 @@ function TrustList({ claims, opp }) {
                   {c.count > 1 && <span className="mt-1 block text-[10px] font-normal text-muted-foreground">{c.count} checks</span>}
                 </span>
                 <p className="flex-1 text-sm leading-relaxed text-foreground/80">{evidencePreview(c.evidence)}</p>
-                <ConfidenceMeter confidence={c.confidence} />
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <ConfidenceMeter confidence={c.confidence} />
+                  {((String(c.evidence).match(/https?:\/\/[^\s,;)]+/g) ?? []).length > 0) && <span className="text-[10px] font-medium text-muted-foreground">{(String(c.evidence).match(/https?:\/\/[^\s,;)]+/g) ?? []).length} sources</span>}
+                </div>
               </button>
             </li>
           ))}
         </ul>
+        {grouped.length > 4 && <button type="button" onClick={() => setShowAll((value) => !value)} className="w-full border-t border-border px-5 py-3 text-left text-xs font-medium text-muted-foreground hover:bg-secondary/40 hover:text-foreground">{showAll ? "Show decision summary" : `Show ${grouped.length - 4} more evidence categories`}</button>}
       </CardContent>
     </Card>
   )
@@ -549,6 +572,10 @@ function NewsList({ news, opp }) {
   )
 }
 
+function hasFullMarketSizing(market) {
+  return [market?.tam, market?.sam, market?.som].every((value) => Number.isFinite(value) && value > 0)
+}
+
 function SourceLedger({ sources, opp }) {
   const { open } = useSources()
   if (!sources?.length) return null
@@ -562,7 +589,7 @@ function SourceLedger({ sources, opp }) {
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       {rows.map((source, index) => (
         <button key={`${source.url}-${source.title}-${index}`} type="button" onClick={() => open({ type: source.type, citation: source.title, opp, record: source })} className="flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-slate-50">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-[10px] font-bold uppercase text-muted-foreground">{source.type?.slice(0, 2) || "S"}</span>
+          <SourceMark source={source} className="size-7 shrink-0" />
           <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{source.title}</span><span className="block truncate text-[11px] text-muted-foreground">{source.source}{source.page ? ` · slide ${source.page}` : ""}</span></span>
           <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
         </button>
@@ -702,19 +729,16 @@ export default function Memo() {
               </Section>
             </motion.div>
 
-            {e?.market && (
+            {e && (
               <motion.div variants={stagger.item}>
                 <Section
                   icon={ChartPie}
                   title="Market"
-                  sub="Sizing re-derived by Diligence — not taken from the deck at face value"
+                  sub={hasFullMarketSizing(e.market) ? "Founder-declared sizing, with independent evidence kept separate" : "No complete investable sizing was disclosed in the submitted materials"}
                   right={<RatingPill rating={opp.market_axis.rating} />}>
                   <div className="rounded-xl border border-border bg-card p-5">
-                    <MarketChart market={e.market} />
-                    <Separator className="my-4" />
-                    <div className="mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
-                      Coverage
-                    </div>
+                    {hasFullMarketSizing(e.market) ? <><MarketChart market={e.market} /><Separator className="my-4" /></> : <div className="flex items-start gap-3 rounded-lg bg-slate-50 p-3.5"><ChartPie className="mt-0.5 size-4 shrink-0 text-slate-400" /><div><p className="text-sm font-medium">TAM / SAM / SOM not provided</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">The system will not invent a market model. Ask for a defined customer segment, pricing basis, and bottom-up revenue bridge before underwriting the opportunity.</p></div></div>}
+                    <div className="mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">Relevant coverage</div>
                     <NewsList news={e.news} opp={opp} />
                   </div>
                 </Section>

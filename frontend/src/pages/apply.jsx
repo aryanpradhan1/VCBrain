@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { AnimatePresence, motion } from "motion/react"
-import { ArrowLeft, Check, ChevronDown, CloudUpload, FileText, Link2, LoaderCircle, ShieldCheck, Sparkles, UserRound, X } from "lucide-react"
+import { ArrowLeft, Check, ChevronDown, CloudUpload, FileText, Link2, LoaderCircle, Plus, ShieldCheck, Sparkles, Trash2, UserRound, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,6 +22,8 @@ const processingStages = [
   ["scoring", "Scoring and diligence"],
 ]
 
+const blankTeamMember = () => ({ name: "", role: "", linkedin: "", github: "", arxiv: "" })
+
 function OptionalLink({ name, label, placeholder }) {
   return (
     <label className="block">
@@ -36,6 +38,7 @@ export default function Apply() {
   const [photo, setPhoto] = useState(null)
   const [dragging, setDragging] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [teamMembers, setTeamMembers] = useState([])
   const [submission, setSubmission] = useState(null)
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -63,6 +66,8 @@ export default function Apply() {
 
   const activeStage = Math.max(0, processingStages.findIndex(([key]) => key === submission?.stage))
 
+  const updateTeamMember = (index, key, value) => setTeamMembers((members) => members.map((member, memberIndex) => memberIndex === index ? { ...member, [key]: value } : member))
+
   const submit = async (event) => {
     event.preventDefault()
     if (!file || submitting) return
@@ -72,6 +77,8 @@ export default function Apply() {
       const form = new FormData(event.currentTarget)
       form.set("deck", file)
       if (photo) form.set("founder_photo", photo)
+      const completedMembers = teamMembers.filter((member) => member.name.trim())
+      if (completedMembers.length) form.set("team_members_json", JSON.stringify(completedMembers))
       setSubmission(await submitApplication(form))
     } catch (err) {
       setError(err.message || "We couldn’t submit your application.")
@@ -123,7 +130,7 @@ export default function Apply() {
 
                 <section className="rounded-2xl border border-border bg-card shadow-sm">
                   <button type="button" onClick={() => setExpanded((value) => !value)} className="flex w-full items-center justify-between px-5 py-4 text-left"><span className="flex items-center gap-2 text-sm font-semibold"><Link2 className="size-4 text-slate-500" /> Optional public links</span><ChevronDown className={cn("size-4 text-muted-foreground transition-transform", expanded && "rotate-180")} /></button>
-                  {expanded && <div className="grid gap-3 border-t border-border px-5 py-5 sm:grid-cols-2"><OptionalLink name="website" label="Company website" placeholder="company.com" /><OptionalLink name="github" label="GitHub profile or org" placeholder="github.com/you" /><OptionalLink name="linkedin" label="LinkedIn" placeholder="linkedin.com/in/you" /><OptionalLink name="product_hunt" label="Product Hunt" placeholder="producthunt.com/products/..." /><OptionalLink name="devpost" label="Devpost" placeholder="devpost.com/..." /><OptionalLink name="arxiv" label="arXiv profile or paper" placeholder="arxiv.org/..." /><OptionalLink name="x" label="X profile" placeholder="x.com/you" /><label className="block"><span className="mb-1.5 block text-xs font-medium">Optional headshot</span><button type="button" onClick={() => photoRef.current?.click()} className="flex h-10 w-full items-center gap-2 rounded-lg border border-input px-3 text-left text-xs text-muted-foreground hover:bg-slate-50"><UserRound className="size-3.5" />{photo ? photo.name : "Upload image"}</button><input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} /></label></div>}
+                  {expanded && <div className="border-t border-border px-5 py-5"><div className="grid gap-3 sm:grid-cols-2"><OptionalLink name="website" label="Company website" placeholder="company.com" /><OptionalLink name="github" label="GitHub profile or org" placeholder="github.com/you" /><OptionalLink name="linkedin" label="LinkedIn profile" placeholder="linkedin.com/in/you" /><OptionalLink name="product_hunt" label="Product Hunt" placeholder="producthunt.com/products/..." /><OptionalLink name="devpost" label="Devpost" placeholder="devpost.com/..." /><OptionalLink name="arxiv" label="arXiv profile or paper" placeholder="arxiv.org/..." /><OptionalLink name="x" label="X profile" placeholder="x.com/you" /><label className="block"><span className="mb-1.5 block text-xs font-medium">Optional headshot</span><button type="button" onClick={() => photoRef.current?.click()} className="flex h-10 w-full items-center gap-2 rounded-lg border border-input px-3 text-left text-xs text-muted-foreground hover:bg-slate-50"><UserRound className="size-3.5" />{photo ? photo.name : "Upload image"}</button><input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} /></label></div><div className="mt-6 border-t border-slate-100 pt-5"><div className="flex items-start justify-between gap-4"><div><h3 className="text-xs font-semibold text-foreground">Co-founder profiles <span className="font-normal text-muted-foreground">optional</span></h3><p className="mt-1 max-w-md text-[11px] leading-relaxed text-muted-foreground">Add the people who should be assessed with the company. An exact LinkedIn URL is the best way to match a portrait and public background; we never ask you to sign in to LinkedIn or search for lookalikes.</p></div>{teamMembers.length < 8 && <Button type="button" variant="outline" size="sm" onClick={() => setTeamMembers((members) => [...members, blankTeamMember()])} className="h-8 shrink-0 rounded-md text-xs"><Plus className="size-3.5" /> Add person</Button>}</div>{teamMembers.length > 0 && <div className="mt-4 space-y-3">{teamMembers.map((member, index) => <div key={index} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"><div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-semibold text-slate-600">Co-founder {index + 1}</span><button type="button" onClick={() => setTeamMembers((members) => members.filter((_, memberIndex) => memberIndex !== index))} className="rounded p-1 text-slate-400 hover:bg-white hover:text-red-600" title="Remove team member"><Trash2 className="size-3.5" /></button></div><div className="grid gap-2 sm:grid-cols-2"><Input value={member.name} onChange={(event) => updateTeamMember(index, "name", event.target.value)} placeholder="Full name" className="h-9 rounded-lg text-xs" /><Input value={member.role} onChange={(event) => updateTeamMember(index, "role", event.target.value)} placeholder="Role (e.g. CTO)" className="h-9 rounded-lg text-xs" /><Input value={member.linkedin} onChange={(event) => updateTeamMember(index, "linkedin", event.target.value)} placeholder="linkedin.com/in/... (recommended)" className="h-9 rounded-lg text-xs" /><Input value={member.github} onChange={(event) => updateTeamMember(index, "github", event.target.value)} placeholder="github.com/..." className="h-9 rounded-lg text-xs" /></div></div>)}</div>}</div></div>}
                 </section>
 
                 <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-muted-foreground"><input required type="checkbox" className="mt-0.5 size-3.5 rounded border-slate-300" /><span>I consent to analysis of my submitted materials and the public links I supplied. Public web pages are stored only as source references and short evidence excerpts.</span></label>

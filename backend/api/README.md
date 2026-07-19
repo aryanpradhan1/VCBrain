@@ -65,8 +65,13 @@ API returns placeholder data for these. Once other modules are ready, just swap 
 ```bash
 cd /Users/aryanpradhan/Downloads/VCBrain/backend/api
 
-# Set API key (required for scoring)
+# Required for scoring; Tavily is used for bounded public evidence checks.
 export OPENAI_API_KEY='your-key-here'
+export TAVILY_API_KEY='your-key-here'
+
+# Optional: enrich an exact LinkedIn URL that a founder explicitly supplied.
+# No LinkedIn login, credentials, or name-based people search is used.
+export PEOPLE_DATA_LABS_API_KEY='your-key-here'
 
 # Start server
 python3 main.py
@@ -108,6 +113,15 @@ pydantic>=2.0.0
 ```
 
 Plus scoring module dependencies (openai, pydantic).
+
+### Optional profile enrichment
+
+When `PEOPLE_DATA_LABS_API_KEY` is set, the intake service can look up an **exact
+LinkedIn `/in/` URL supplied in the application** using People Data Labs. A returned
+record is accepted only if its LinkedIn identity matches that submitted URL. The app
+stores only a small display-safe subset (portrait URL, headline/current role, provider
+status); it does not store the provider's full person record. The result is cached on
+the application so reprocessing does not repeat a billable lookup.
 
 ### File Structure
 

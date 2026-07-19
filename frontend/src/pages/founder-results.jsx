@@ -16,7 +16,6 @@ export default function FounderResults() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { data, error, loading, retry } = useAsync(() => getFounderResults(id), [id])
-
   return (
     <div className="min-h-dvh bg-slate-50/60">
       <Page className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-6 py-16 text-center">
