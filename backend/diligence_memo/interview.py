@@ -27,13 +27,14 @@ class InterviewSession:
         claim = self.claims[index % len(self.claims)] if self.claims else None
         response = self.responses[-1] if self.responses else ""
         if response and len(response.split()) < 8:
-            question = "What specific evidence would let an investor independently verify that answer?"
+            question = self._verification_follow_up(claim)
         elif response and not any(marker in response.casefold() for marker in _EVIDENCE_MARKERS):
-            question = "Which measurable result most strongly supports your last answer, and over what period?"
+            question = self._measurement_follow_up(claim)
         elif claim:
             question = self._challenge(claim)
         else:
             question = "What is the strongest falsifiable claim behind this company, and what evidence supports it?"
+        question = self._deduplicate(question, claim, index)
         self.questions_asked.append(question)
         return question
 
@@ -73,6 +74,42 @@ class InterviewSession:
             claim.field,
             f"What evidence could falsify your claim about {claim.field}: {claim.value}?",
         )
+
+    @staticmethod
+    def _verification_follow_up(claim: DeckClaim | None) -> str:
+        prompts = {
+            "market_size": "Which source and assumption would let us independently reproduce your market-size estimate?",
+            "traction": "Which customer record or product metric can independently verify the traction you described?",
+            "team": "What concrete hiring plan or team record supports your answer about execution capacity?",
+            "ask": "Which dated milestone and budget record would verify how this financing will be used?",
+            "problem_product": "Which observed customer behavior independently verifies that this problem is urgent?",
+        }
+        if claim:
+            return prompts.get(
+                claim.field,
+                f"What independent record could verify your {claim.field} claim?",
+            )
+        return "What independent record could verify the answer you just gave?"
+
+    @staticmethod
+    def _measurement_follow_up(claim: DeckClaim | None) -> str:
+        if claim:
+            return (
+                f"Which measurable result best supports your {claim.field} claim, "
+                "and over what period?"
+            )
+        return "Which measurable result best supports your last answer, and over what period?"
+
+    def _deduplicate(self, question: str, claim: DeckClaim | None, index: int) -> str:
+        if question not in self.questions_asked:
+            return question
+        alternatives = [
+            self._challenge(claim) if claim else "What evidence would prove your last answer wrong?",
+            "What changed your view on this point, and what evidence caused that change?",
+            "What would a skeptical customer say is missing from that answer?",
+            f"What concrete result would you commit to before question {index + 2}?",
+        ]
+        return next(item for item in alternatives if item not in self.questions_asked)
 
 
 class InterviewAgent:

@@ -132,6 +132,30 @@ export default function Apply() {
               </form>
             </motion.main>
           ) : (
+            <motion.div
+              key="done"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+              className="flex flex-col items-center text-center">
+              <motion.span
+                initial={{ scale: 0.4 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 400, damping: 16, delay: 0.15 }}
+                className="flex size-12 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg">
+                <Check className="size-6" strokeWidth={3} />
+              </motion.span>
+              <h2 className="mt-4 text-2xl font-semibold tracking-tight">You're in the pipeline.</h2>
+              <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
+                {company.trim()} is being scored now — deck claims cross-checked against your public
+                footprint. You'll hear back with a real decision within 24 hours.
+              </p>
+              <Link
+                to="/founder/f002"
+                className="mt-6 text-sm font-medium underline underline-offset-4 transition-opacity hover:opacity-70">
+                See what your score page will look like
+              </Link>
+            </motion.div>
             <motion.main key="status" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center text-center">
               <span className={cn("flex size-12 items-center justify-center rounded-full text-white shadow-lg", submission.status === "ready" ? "bg-emerald-600" : submission.status === "failed" ? "bg-red-500" : "bg-slate-800")}>
                 {submission.status === "ready" ? <Check className="size-6" strokeWidth={3} /> : submission.status === "failed" ? <X className="size-6" strokeWidth={3} /> : <LoaderCircle className="size-5 animate-spin" />}

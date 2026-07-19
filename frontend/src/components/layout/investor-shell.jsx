@@ -21,7 +21,7 @@ const investorNav = [
 
 const founderNav = [
   { to: "/apply", label: "Apply", icon: FilePlus2 },
-  { to: "/founder/f-002", label: "Founder portal", icon: Gauge },
+  { to: "/founder/f002", label: "Founder portal", icon: Gauge },
 ]
 
 function Item({ to, label, icon: Icon, end, count }) {
