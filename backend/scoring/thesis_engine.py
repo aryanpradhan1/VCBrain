@@ -97,20 +97,31 @@ def extract_ask_amount(deck_claims: List[Dict[str, Any]]) -> int:
     """
     Extract the funding ask amount from deck claims.
     Returns 0 if not found.
+
+    Handles decimal M/K notation ("$1.5M", "$100.5K") -- the previous version's plain
+    r'\$?([\d,]+)' fallback stopped at the decimal point, so "$1.5M" parsed as literally
+    $1 (no multiplier applied), silently failing the fund's check-size gate for any deck
+    using standard "$X.YM" fundraising phrasing (the common case, not an edge case).
     """
     ask_claims = [c for c in deck_claims if c.get("field") == "ask"]
 
     if not ask_claims:
         return 0
 
-    # Simple extraction: look for numbers in the claim
     import re
     for claim in ask_claims:
         value = claim.get("value", "")
-        # Look for patterns like "$100K", "$100,000", "100k"
-        numbers = re.findall(r'\$?([\d,]+)k', value.lower())
-        if numbers:
-            return int(numbers[0].replace(',', '')) * 1000
+
+        # "$1.5M" / "1.5 million" style, decimal-aware, checked before the K/plain
+        # patterns since "1.5m" would otherwise be misread by a K-only regex.
+        millions = re.findall(r'\$?([\d,]+(?:\.\d+)?)\s*m(?:illion)?\b', value.lower())
+        if millions:
+            return int(float(millions[0].replace(',', '')) * 1_000_000)
+
+        # "$100K" / "$100,000" / "100k", decimal-aware ("$100.5K").
+        thousands = re.findall(r'\$?([\d,]+(?:\.\d+)?)\s*k\b', value.lower())
+        if thousands:
+            return int(float(thousands[0].replace(',', '')) * 1_000)
 
         numbers = re.findall(r'\$?([\d,]+)', value)
         if numbers:

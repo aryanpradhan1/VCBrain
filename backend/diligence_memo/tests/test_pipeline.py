@@ -116,6 +116,26 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(output["diligence"]["flagged_claims"][0]["severity"], "high")
         self.assertEqual(output["trust"]["claim_trust"][0]["confidence"], "low")
 
+    def test_single_unverified_claim_does_not_alone_block_approve(self) -> None:
+        # A private early-stage company's specific traction number routinely has no
+        # public source -- that alone shouldn't cap the verdict at "review" if the rest
+        # of the deck is well-corroborated and nothing is actually contradicted.
+        evidence_by_query_count = {"traction": []}  # no public evidence for the private metric
+
+        class PerFieldSearch:
+            def search(self, query: str, max_results: int = 3) -> list[Evidence]:
+                if "traction" in query:
+                    return []
+                return [Evidence("Acme profile", "https://example.com/acme", f"Acme: {query}")]
+
+        output = DiligenceMemoPipeline(ClaimValidator(PerFieldSearch())).run(
+            {"company_name": "Acme", "sector": "AI", "deck_claims": CLAIMS}
+        )
+        confidences = [item["confidence"] for item in output["trust"]["claim_trust"]]
+        self.assertIn("low", confidences)  # the unverifiable traction claim
+        self.assertEqual(output["diligence"]["flagged_claims"], [])  # never contradicted, just unverified
+        self.assertEqual(output["verdict"], "approve")
+
     def test_no_evidence_stays_low_confidence_without_fabrication(self) -> None:
         output = DiligenceMemoPipeline(ClaimValidator(FakeSearch([]))).run(
             {"company_name": "ColdCo", "deck_claims": CLAIMS[:1]}
